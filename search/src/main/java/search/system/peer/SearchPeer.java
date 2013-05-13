@@ -42,7 +42,6 @@ public final class SearchPeer extends ComponentDefinition {
         Negative<Web> webPort = negative(Web.class);
 	
         private Component cyclon, tman, search, bootstrap;
-	private int num;
 	private Address self;
         private PeerAddress selfAddress;
 	private int bootstrapRequestPeerCount;
@@ -72,8 +71,7 @@ public final class SearchPeer extends ComponentDefinition {
 		connect(tman.getPositive(TManSamplePort.class), 
                         search.getNegative(TManSamplePort.class));
 
-                connect(indexPort, 
-                        search.getNegative(IndexPort.class));
+                connect(indexPort, search.getNegative(IndexPort.class));
 		
 		subscribe(handleInit, control);
 		subscribe(handleJoinCompleted, cyclon.getPositive(CyclonPort.class));
@@ -82,8 +80,8 @@ public final class SearchPeer extends ComponentDefinition {
 
 //-------------------------------------------------------------------	
 	Handler<SearchPeerInit> handleInit = new Handler<SearchPeerInit>() {
+                @Override
 		public void handle(SearchPeerInit init) {
-			num = init.getNum();
 			self = init.getPeerSelf();
 			CyclonConfiguration cyclonConfiguration = init.getCyclonConfiguration();
 			aggregationConfiguration = init.getApplicationConfiguration();
@@ -95,13 +93,13 @@ public final class SearchPeer extends ComponentDefinition {
 			trigger(new BootstrapClientInit(self, init.getBootstrapConfiguration()), bootstrap.getControl());
 			BootstrapRequest request = new BootstrapRequest("Cyclon", bootstrapRequestPeerCount);
 			trigger(request, bootstrap.getPositive(P2pBootstrap.class));
-			Snapshot.addPeer(self);
 		}
 	};
 
 
 //-------------------------------------------------------------------	
 	Handler<BootstrapResponse> handleBootstrapResponse = new Handler<BootstrapResponse>() {
+                @Override
 		public void handle(BootstrapResponse event) {
 			if (!bootstrapped) {
 				Set<PeerEntry> somePeers = event.getPeers();
@@ -120,12 +118,13 @@ public final class SearchPeer extends ComponentDefinition {
 
 //-------------------------------------------------------------------	
 	Handler<JoinCompleted> handleJoinCompleted = new Handler<JoinCompleted>() {
+                @Override
 		public void handle(JoinCompleted event) {
 			trigger(new BootstrapCompleted("Cyclon", new PeerAddress(self)), 
                                 bootstrap.getPositive(P2pBootstrap.class));
-			trigger(new SearchInit(self, num, aggregationConfiguration), search.getControl());
-                        
-                        trigger(new TManInit(self, new TManConfiguration(1000)), tman.getControl());
+			trigger(new SearchInit(self, aggregationConfiguration), search.getControl());
+			trigger(new TManInit(self, new TManConfiguration(1000, 500, 0.5)), tman.getControl());
 		}
 	};
+
 }
