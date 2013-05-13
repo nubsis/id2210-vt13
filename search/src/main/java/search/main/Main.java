@@ -10,6 +10,8 @@ public class Main {
     public static void main(String[] args) throws Throwable {
         long seed = System.currentTimeMillis();
         Configuration configuration = new Configuration(seed);
+        
+        GroovyTest gt = new GroovyTest();
 
         Scenario scenario = new Scenario1();
         scenario.setSeed(seed);
