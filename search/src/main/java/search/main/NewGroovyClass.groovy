@@ -7,12 +7,10 @@ package search.main
 
 /**
  *
- * @author Nubsis
+ * @author Andrew
  */
-class GroovyTest {
-	GroovyTest()
-        {
-            println "This is a test"
-        }
+class NewGroovyClass {
+	public void test()
+        {}
 }
 

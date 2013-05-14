@@ -12,6 +12,9 @@ public class Main {
         Configuration configuration = new Configuration(seed);
         
         GroovyTest gt = new GroovyTest();
+        gt.test1();
+        NewGroovyClass ngc = new NewGroovyClass();
+        ngc.test();
 
         Scenario scenario = new Scenario1();
         scenario.setSeed(seed);
