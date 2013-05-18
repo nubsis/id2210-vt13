@@ -7,12 +7,9 @@ import cyclon.system.peer.cyclon.CyclonSample;
 import cyclon.system.peer.cyclon.CyclonSamplePort;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.Date;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Random;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import se.sics.kompics.ComponentDefinition;
 import se.sics.kompics.Handler;
@@ -32,7 +29,7 @@ import tman.system.peer.tman.messages.PingResponse;
 
 public final class TMan extends ComponentDefinition {
 
-    private static final Logger logger = LoggerFactory.getLogger(TMan.class);
+    private common.Logger.Instance logger;
     Negative<TManSamplePort> tmanPort = negative(TManSamplePort.class);
     Positive<CyclonSamplePort> cyclonSamplePort = positive(CyclonSamplePort.class);
     Positive<Network> networkPort = positive(Network.class);
@@ -40,7 +37,7 @@ public final class TMan extends ComponentDefinition {
     private long period;
     private Address self;
     private Address leader = null;
-    private Collection<Address> tmanPartners = new LinkedList<Address>();
+    private Collection<Address> tmanPartners = new LinkedList<>();
     private Gradient gradient;
     private final PingTimeouts timeouts = new PingTimeouts();
     private TManConfiguration tmanConfiguration;
@@ -73,7 +70,9 @@ public final class TMan extends ComponentDefinition {
     Handler<TManInit> handleInit = new Handler<TManInit>() {
         @Override
         public void handle(TManInit init) {
+            
             self = init.getSelf();
+            logger = new common.Logger.Instance(self.toString());
 
             gradient = new Gradient(self);
 
@@ -87,22 +86,12 @@ public final class TMan extends ComponentDefinition {
         }
     };
 
-    private void log(final Object obj) {
-        Thread thr = new Thread() {
-            @Override
-            public void run() {
-                System.err.println(new Date().toString() + " " + self + ": " + obj);
-            }
-        };
-        thr.start();
-    }
 //-------------------------------------------------------------------	
     Handler<TManSchedule> handleRound = new Handler<TManSchedule>() {
         @Override
         public void handle(TManSchedule event) {
 
             Snapshot.updateTManPartners(self, tmanPartners);
-
             
             Collection<Address> timedOut = timeouts.getTimedOut();
             if (timedOut.size() > 0) {
@@ -110,7 +99,7 @@ public final class TMan extends ComponentDefinition {
                 for(Address a : timedOut) {
                     s += "\t" + a;
                 }
-                log(s + "\n");
+                logger.log(s);
             }
             
             gradient.remove(timedOut);
@@ -118,10 +107,14 @@ public final class TMan extends ComponentDefinition {
             Collection<Address> gradientNeighbours = gradient.getAll();
             timeouts.initialize(gradientNeighbours);
             
+            String s = "neighbours:\n";
+            
             for (Address a : gradientNeighbours) {
-                //log("REQUEST_TO " + a);
+                s += "\t" + a + "\n";
                 trigger(new PingRequest(self, a), networkPort);
             }
+            
+            logger.log(s);
 
             // Publish sample to connected components
             trigger(new TManSample(tmanPartners), tmanPort);
@@ -137,14 +130,12 @@ public final class TMan extends ComponentDefinition {
     Handler<PingRequest> handlePingRequest = new Handler<PingRequest>() {
         @Override
         public void handle(PingRequest request) {
-            //log("REQUEST_FROM " + request.getSource());
             trigger(new PingResponse(request), networkPort);
         }
     };
     Handler<PingResponse> handlePingResponse = new Handler<PingResponse>() {
         @Override
         public void handle(PingResponse response) {
-            //log("RESPONSE_FROM " + response.getSource());
             timeouts.replyReceived(response.getSource());
         }
     };

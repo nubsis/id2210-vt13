@@ -88,6 +88,7 @@ public final class SearchExecutionMain extends ComponentDefinition {
             super(Message.class, address, true);
         }
 
+        @Override
         public Address getValue(Message event) {
             return event.getDestination();
         }

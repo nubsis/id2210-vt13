@@ -1,21 +1,22 @@
 package cyclon.simulator.snapshot;
 
 
+import common.Logger;
 import java.util.ArrayList;
 import java.util.HashMap;
 import se.sics.kompics.address.Address;
 
 public class Snapshot {
+    private static final common.Logger.Instance logger = new Logger.Instance("Cyclon.Snapshot");
+    
 	private static HashMap<Address, PeerInfo> peers = new HashMap<Address, PeerInfo>();
 	private static HashMap<Address, Integer> fanout = new HashMap<Address, Integer>();
 	private static HashMap<Address, Integer> fanin = new HashMap<Address, Integer>();
 	private static int counter = 0;
-	private static String FILENAME = "cyclon.out";
 	private static GraphUtil g = new GraphUtil();
 
 //-------------------------------------------------------------------
 	public static void init(int numOfStripes) {
-		FileIO.write("", FILENAME);
 	}
 
 //-------------------------------------------------------------------
@@ -65,8 +66,7 @@ public class Snapshot {
 		str += reportDetailes();
 		str += "###\n";
 		
-		System.out.println(str);
-		FileIO.append(str, FILENAME);
+        logger.log(str);
 	}
 
 //-------------------------------------------------------------------

@@ -1,5 +1,6 @@
 package search.simulator.core;
 
+import common.Logger;
 import common.simulation.SimulatorPort;
 import java.util.HashMap;
 
@@ -41,6 +42,8 @@ import search.system.peer.IndexPort;
 
 public final class SearchSimulator extends ComponentDefinition {
 
+    private final common.Logger.Instance logger = new Logger.Instance("SearchSimulator");
+    
     Positive<SimulatorPort> simulator = positive(SimulatorPort.class);
     Positive<Network> network = positive(Network.class);
     Positive<Timer> timer = positive(Timer.class);
@@ -63,6 +66,7 @@ public final class SearchSimulator extends ComponentDefinition {
     
 //-------------------------------------------------------------------	
     public SearchSimulator() {
+        
         peers = new HashMap<Long, Component>();
         peersAddress = new HashMap<Long, Address>();
         ringNodes = new ConsistentHashtable<Long>();
@@ -140,8 +144,7 @@ public final class SearchSimulator extends ComponentDefinition {
     Handler<PeerJoin> handlePeerJoin = new Handler<PeerJoin>() {
         @Override
         public void handle(PeerJoin event) {
-            
-            System.err.println("Joined " + event.getPeerId());
+            logger.log(event.getPeerId() + " joined");
             
             Long id = event.getPeerId();
 
@@ -164,7 +167,7 @@ public final class SearchSimulator extends ComponentDefinition {
             Long id = ringNodes.getNode(event.getId());
 
             if (ringNodes.size() == 0) {
-                System.err.println("Empty network");
+                logger.log("Empty network...");
                 return;
             }
 

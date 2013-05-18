@@ -1,11 +1,13 @@
 package search.simulator.snapshot;
 
+import common.Logger;
 import java.util.ArrayList;
 import java.util.concurrent.ConcurrentHashMap;
 import se.sics.kompics.address.Address;
 
 public class Snapshot {
 
+    private static final common.Logger.Instance logger = new Logger.Instance("Search.Snapshot");
     private static ConcurrentHashMap<Address, PeerInfo> peers = 
             new ConcurrentHashMap<Address, PeerInfo>();
     private static int counter = 0;
@@ -13,7 +15,6 @@ public class Snapshot {
 
 //-------------------------------------------------------------------
     public static void init(int numOfStripes) {
-        FileIO.write("", FILENAME);
     }
 
 //-------------------------------------------------------------------
@@ -56,8 +57,7 @@ public class Snapshot {
         str += reportDetails();
         str += "###\n";
 
-        System.out.println(str);
-        FileIO.append(str, FILENAME);
+        logger.log(str);
     }
 
 //-------------------------------------------------------------------

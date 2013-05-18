@@ -1,5 +1,6 @@
 package search.system.peer;
 
+import common.Logger;
 import java.util.LinkedList;
 import java.util.Set;
 
@@ -35,6 +36,8 @@ import tman.system.peer.tman.TManSamplePort;
 
 public final class SearchPeer extends ComponentDefinition {
 
+    private common.Logger.Instance logger;
+    
     Positive<IndexPort> indexPort = positive(IndexPort.class);
     Positive<Network> network = positive(Network.class);
     Positive<Timer> timer = positive(Timer.class);
@@ -80,6 +83,7 @@ public final class SearchPeer extends ComponentDefinition {
         @Override
         public void handle(SearchPeerInit init) {
             self = init.getPeerSelf();
+            logger = new Logger.Instance("SearchPeer." + self.toString());
             CyclonConfiguration cyclonConfiguration = init.getCyclonConfiguration();
             aggregationConfiguration = init.getApplicationConfiguration();
 
@@ -128,7 +132,7 @@ public final class SearchPeer extends ComponentDefinition {
             trigger(e, tman.getControl());
             trigger(e, search.getControl());
             trigger(e, bootstrap.getControl());
-            System.err.println(self + ": stopping");
+            logger.log("stopping");
         }
     };
 }

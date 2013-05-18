@@ -1,5 +1,6 @@
 package cyclon.simulator.core;
 
+import common.Logger;
 import common.configuration.Configuration;
 import common.configuration.CyclonConfiguration;
 import common.simulation.SimulatorPort;
@@ -34,6 +35,7 @@ import se.sics.ipasdistances.AsIpGenerator;
 
 public final class CyclonSimulator extends ComponentDefinition {
 
+    private final common.Logger.Instance logger = new Logger.Instance("CyclonSimulator");
     Positive<SimulatorPort> simulator = positive(SimulatorPort.class);
     Positive<Network> network = positive(Network.class);
     Positive<Timer> timer = positive(Timer.class);
@@ -103,7 +105,7 @@ public final class CyclonSimulator extends ComponentDefinition {
             Long id = cyclonView.getNode(event.getId());
 
             if (cyclonView.size() == 0) {
-                System.err.println("Empty network");
+                logger.log("Empty network...");
                 return;
             }
 

@@ -16,7 +16,7 @@
  * Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
  */
 
-package tman.simulator.snapshot;
+package common;
 
 import java.io.BufferedWriter;
 import java.io.File;
@@ -30,7 +30,7 @@ import java.io.Writer;
  * Class to work with text files.
  */
 
-public class FileIO {
+class FileIO {
 
 //----------------------------------------------------------------------------------
 	/**
@@ -64,7 +64,7 @@ public class FileIO {
 			Writer output = null;
 			FileWriter file = new FileWriter(fileName, true);
 			output = new BufferedWriter(file);
-			output.write(str);
+			output.write(str + "\r\n");
 			output.close();
 		}
 		catch(IOException e) {

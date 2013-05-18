@@ -36,8 +36,6 @@ import org.apache.lucene.search.TopScoreDocCollector;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.RAMDirectory;
 import org.apache.lucene.util.Version;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import se.sics.kompics.ComponentDefinition;
 import se.sics.kompics.Handler;
@@ -63,7 +61,8 @@ import tman.system.peer.tman.TManSamplePort;
  */
 public final class Search extends ComponentDefinition {
 
-    private static final Logger logger = LoggerFactory.getLogger(Search.class);
+    private common.Logger.Instance logger;
+    
     private final Positive<IndexPort> indexPort = positive(IndexPort.class);
     private final Positive<Network> networkPort = positive(Network.class);
     private final Positive<Timer> timerPort = positive(Timer.class);
@@ -112,6 +111,7 @@ public final class Search extends ComponentDefinition {
         @Override
         public void handle(SearchInit init) {
             self = init.getSelf();
+            logger = new common.Logger.Instance("Search." + self);
             searchConfiguration = init.getConfiguration();
             routingTable = new HashMap<Integer, List<PeerDescriptor>>(searchConfiguration.getNumPartitions());
             random = new Random(init.getConfiguration().getSeed());
@@ -138,8 +138,9 @@ public final class Search extends ComponentDefinition {
         public void handle(WebRequest event) {
 
             String[] args = event.getTarget().split("-");
+            
+            logger.log("Handling Webpage Request");
 
-            logger.debug("Handling Webpage Request");
             WebResponse response;
             if (args[0].compareToIgnoreCase("search") == 0) {
                 response = new WebResponse(searchPageHtml(args[1]), event, 1, 1);
@@ -473,8 +474,8 @@ public final class Search extends ComponentDefinition {
         public void handle(AddIndexText event) {
             int id = LeaderEmulator.incIndexId();
             updateIndexPointers(id);
-            logger.info(self.getId()
-                    + " - adding index entry: {} Id={}", event.getText(), id);
+            logger.log("adding index entry: " + event.getText() + " (" + id + ")");
+            
             try {
                 addEntry(event.getText(), id);
             } catch (IOException ex) {
