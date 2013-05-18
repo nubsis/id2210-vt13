@@ -1,12 +1,14 @@
-package tman.system.peer.tman.messages
+package tman.system.peer.tman.messages;
 
-import se.sics.kompics.address.Address
-import se.sics.kompics.network.Message
-import se.sics.kompics.network.Transport
+import java.util.UUID;
+
+import se.sics.kompics.address.Address;
+import se.sics.kompics.network.Message;
+import se.sics.kompics.network.Transport;
 
 public abstract class TManMessage extends Message {
 
-	protected final UUID id
+	protected final UUID id;
 
 	public TManMessage(Address source, Address destination) {
 		this(source, destination, Transport.TCP, true);
@@ -14,8 +16,7 @@ public abstract class TManMessage extends Message {
 
 	public TManMessage(Address source, Address destination, UUID id)
 	{
-		this(source, destination)
-		this.id = id;
+		this(source, destination);
 	}
 
 	public TManMessage(Address source, Address destination, Transport protocol) {
@@ -23,7 +24,7 @@ public abstract class TManMessage extends Message {
 	}
 
 	public TManMessage(Address source, Address destination, Transport protocol,
-	boolean highPriority) {
+			boolean highPriority) {
 		super(source, destination, protocol, highPriority);
 		id = UUID.randomUUID();
 	}
