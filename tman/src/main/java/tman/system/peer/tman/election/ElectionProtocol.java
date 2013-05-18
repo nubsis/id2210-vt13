@@ -5,6 +5,7 @@ import tman.system.peer.tman.Gradient;
 import tman.system.peer.tman.TMan;
 import tman.system.peer.tman.TManHandler;
 import tman.system.peer.tman.messages.ElectionRequest;
+import tman.system.peer.tman.messages.LeaderAnnounceMessage;
 
 public class ElectionProtocol
 {
@@ -22,14 +23,14 @@ public class ElectionProtocol
 		}
 	}
 
-	public static class LeaderAnnounceHandler extends TManHandler<ElectionRequest>
+	public static class LeaderAnnounceHandler extends TManHandler<LeaderAnnounceMessage>
 	{
 		public LeaderAnnounceHandler(TMan tman) {
 			super(tman);
 		}
 
 		@Override
-		public void handle(ElectionRequest event) {
+		public void handle(LeaderAnnounceMessage event) {
 		}
 	}
 
