@@ -5,6 +5,7 @@
 package tman.system.peer.tman.messages;
 
 import java.util.UUID;
+
 import se.sics.kompics.network.Message;
 
 /**
@@ -13,14 +14,14 @@ import se.sics.kompics.network.Message;
  */
 public class PingResponse extends Message {
 
-    private UUID id;
-    public PingResponse(PingRequest req) {
-        super(req.getDestination(), req.getSource());
-        id = req.getId();
-    }
+	private final UUID id;
 
-    public UUID getId() {
-        return id;
-    }
-    
+	public PingResponse(PingRequest req) {
+		super(req.getDestination(), req.getSource());
+		id = req.getId();
+	}
+
+	public UUID getId() {
+		return id;
+	}
 }

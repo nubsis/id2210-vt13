@@ -5,6 +5,7 @@
 package tman.system.peer.tman.messages;
 
 import java.util.UUID;
+
 import se.sics.kompics.address.Address;
 import se.sics.kompics.network.Message;
 
@@ -13,14 +14,14 @@ import se.sics.kompics.network.Message;
  * @author Andrew
  */
 public class PingRequest extends Message {
-    
-    private UUID id = UUID.randomUUID();
-    public PingRequest(Address src, Address dst) {
-        super(src, dst);
-    }
 
-    public UUID getId() {
-        return id;
-    }
-    
+	private final UUID id = UUID.randomUUID();
+	public PingRequest(Address src, Address dst) {
+		super(src, dst);
+	}
+
+	public UUID getId() {
+		return id;
+	}
+
 }
