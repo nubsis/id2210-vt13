@@ -60,6 +60,7 @@ public final class CyclonSimulator extends ComponentDefinition {
     }
 //-------------------------------------------------------------------	
     Handler<SimulatorInit> handleInit = new Handler<SimulatorInit>() {
+        @Override
         public void handle(SimulatorInit init) {
             peers.clear();
             peerIdSequence = 0;
@@ -77,6 +78,7 @@ public final class CyclonSimulator extends ComponentDefinition {
     };
 //-------------------------------------------------------------------	
     Handler<PeerJoin> handlePeerJoin = new Handler<PeerJoin>() {
+        @Override
         public void handle(PeerJoin event) {
             Long id = event.getPeerId();
 
@@ -96,6 +98,7 @@ public final class CyclonSimulator extends ComponentDefinition {
     };
 //-------------------------------------------------------------------	
     Handler<PeerFail> handlePeerFail = new Handler<PeerFail>() {
+        @Override
         public void handle(PeerFail event) {
             Long id = cyclonView.getNode(event.getId());
 
@@ -110,6 +113,7 @@ public final class CyclonSimulator extends ComponentDefinition {
     };
 //-------------------------------------------------------------------	
     Handler<GenerateReport> handleGenerateReport = new Handler<GenerateReport>() {
+        @Override
         public void handle(GenerateReport event) {
             Snapshot.report();
         }

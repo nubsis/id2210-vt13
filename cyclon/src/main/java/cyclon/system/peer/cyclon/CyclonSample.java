@@ -1,6 +1,7 @@
 package cyclon.system.peer.cyclon;
 
 import java.util.ArrayList;
+import java.util.Collection;
 
 
 import se.sics.kompics.Event;
@@ -19,7 +20,7 @@ public class CyclonSample extends Event {
 	}
 
 //-------------------------------------------------------------------
-	public ArrayList<Address> getSample() {
+	public Collection<Address> getSample() {
 		return this.nodes;
 	}
 }

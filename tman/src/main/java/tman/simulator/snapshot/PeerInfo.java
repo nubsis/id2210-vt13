@@ -1,6 +1,7 @@
 package tman.simulator.snapshot;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import se.sics.kompics.address.Address;
 
 
@@ -15,8 +16,9 @@ public class PeerInfo {
 	}
 
 //-------------------------------------------------------------------
-	public void updateTManPartners(ArrayList<Address> partners) {
-		this.tmanPartners = partners;
+	public void updateTManPartners(Collection<Address> partners) {
+		this.tmanPartners.clear();
+        this.tmanPartners.addAll(partners);
 	}
 
 //-------------------------------------------------------------------

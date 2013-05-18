@@ -26,10 +26,16 @@ public class Scenario1 extends Scenario {
                                 uniform(0, Integer.MAX_VALUE)
                                 );
 		}};
+        
+        StochasticProcess process3 = new StochasticProcess() {{
+           eventInterArrivalTime(constant(100));
+           raise(1, Operations.peerFail, uniform(1, 1));
+        }};
 
 		process0.start();
 		process1.startAfterTerminationOf(2000, process0);
-		process2.startAfterTerminationOf(2000, process1);
+		//process2.startAfterTerminationOf(2000, process1);
+        process3.startAfterTerminationOf(6000, process1);
 	}};
 
 	// -------------------------------------------------------------------

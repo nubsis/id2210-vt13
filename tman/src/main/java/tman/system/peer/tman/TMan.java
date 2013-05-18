@@ -5,7 +5,10 @@ import java.util.ArrayList;
 
 import cyclon.system.peer.cyclon.CyclonSample;
 import cyclon.system.peer.cyclon.CyclonSamplePort;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.Date;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Random;
 import org.slf4j.Logger;
@@ -15,6 +18,7 @@ import se.sics.kompics.ComponentDefinition;
 import se.sics.kompics.Handler;
 import se.sics.kompics.Negative;
 import se.sics.kompics.Positive;
+import se.sics.kompics.Stop;
 import se.sics.kompics.address.Address;
 import se.sics.kompics.network.Network;
 import se.sics.kompics.timer.SchedulePeriodicTimeout;
@@ -23,17 +27,22 @@ import se.sics.kompics.timer.Timeout;
 import se.sics.kompics.timer.Timer;
 
 import tman.simulator.snapshot.Snapshot;
+import tman.system.peer.tman.messages.PingRequest;
+import tman.system.peer.tman.messages.PingResponse;
 
 public final class TMan extends ComponentDefinition {
-    private static final Logger logger = LoggerFactory.getLogger(TMan.class);
 
+    private static final Logger logger = LoggerFactory.getLogger(TMan.class);
     Negative<TManSamplePort> tmanPort = negative(TManSamplePort.class);
     Positive<CyclonSamplePort> cyclonSamplePort = positive(CyclonSamplePort.class);
     Positive<Network> networkPort = positive(Network.class);
     Positive<Timer> timerPort = positive(Timer.class);
     private long period;
     private Address self;
-    private ArrayList<Address> tmanPartners;
+    private Address leader = null;
+    private Collection<Address> tmanPartners = new LinkedList<Address>();
+    private Gradient gradient;
+    private final PingTimeouts timeouts = new PingTimeouts();
     private TManConfiguration tmanConfiguration;
     private Random r;
 
@@ -42,70 +51,118 @@ public final class TMan extends ComponentDefinition {
         public TManSchedule(SchedulePeriodicTimeout request) {
             super(request);
         }
+
         public TManSchedule(ScheduleTimeout request) {
             super(request);
         }
     }
-    
+
 //-------------------------------------------------------------------	
     public TMan() {
-        tmanPartners = new ArrayList<Address>();
 
         subscribe(handleInit, control);
         subscribe(handleRound, timerPort);
         subscribe(handleCyclonSample, cyclonSamplePort);
         subscribe(handleTManPartnersResponse, networkPort);
         subscribe(handleTManPartnersRequest, networkPort);
+
+        subscribe(handlePingRequest, networkPort);
+        subscribe(handlePingResponse, networkPort);
     }
 //-------------------------------------------------------------------	
     Handler<TManInit> handleInit = new Handler<TManInit>() {
         @Override
         public void handle(TManInit init) {
             self = init.getSelf();
+
+            gradient = new Gradient(self);
+
             tmanConfiguration = init.getConfiguration();
             period = tmanConfiguration.getPeriod();
             r = new Random(tmanConfiguration.getSeed());
-            SchedulePeriodicTimeout rst = new SchedulePeriodicTimeout(period, period);
+            SchedulePeriodicTimeout rst = new SchedulePeriodicTimeout(5000, 5000);
+
             rst.setTimeoutEvent(new TManSchedule(rst));
             trigger(rst, timerPort);
-
         }
     };
+
+    private void log(final Object obj) {
+        Thread thr = new Thread() {
+            @Override
+            public void run() {
+                System.err.println(new Date().toString() + " " + self + ": " + obj);
+            }
+        };
+        thr.start();
+    }
 //-------------------------------------------------------------------	
     Handler<TManSchedule> handleRound = new Handler<TManSchedule>() {
         @Override
         public void handle(TManSchedule event) {
+
             Snapshot.updateTManPartners(self, tmanPartners);
 
+            
+            Collection<Address> timedOut = timeouts.getTimedOut();
+            if (timedOut.size() > 0) {
+                String s = timedOut.size() + " neighbours timed out from " + gradient.getAll().size() + "\n";
+                for(Address a : timedOut) {
+                    s += "\t" + a;
+                }
+                log(s + "\n");
+            }
+            
+            gradient.remove(timedOut);
+
+            Collection<Address> gradientNeighbours = gradient.getAll();
+            timeouts.initialize(gradientNeighbours);
+            
+            for (Address a : gradientNeighbours) {
+                //log("REQUEST_TO " + a);
+                trigger(new PingRequest(self, a), networkPort);
+            }
+
             // Publish sample to connected components
-            trigger(new TManSample(tmanPartners), tmanPort);            
+            trigger(new TManSample(tmanPartners), tmanPort);
         }
     };
 //-------------------------------------------------------------------	
     Handler<CyclonSample> handleCyclonSample = new Handler<CyclonSample>() {
         @Override
         public void handle(CyclonSample event) {
-            List<Address> cyclonPartners = event.getSample();
-
-            // merge cyclonPartners into TManPartners
+            gradient.merge(event.getSample());
+        }
+    };
+    Handler<PingRequest> handlePingRequest = new Handler<PingRequest>() {
+        @Override
+        public void handle(PingRequest request) {
+            //log("REQUEST_FROM " + request.getSource());
+            trigger(new PingResponse(request), networkPort);
+        }
+    };
+    Handler<PingResponse> handlePingResponse = new Handler<PingResponse>() {
+        @Override
+        public void handle(PingResponse response) {
+            //log("RESPONSE_FROM " + response.getSource());
+            timeouts.replyReceived(response.getSource());
         }
     };
 //-------------------------------------------------------------------	
     Handler<ExchangeMsg.Request> handleTManPartnersRequest = new Handler<ExchangeMsg.Request>() {
         @Override
         public void handle(ExchangeMsg.Request event) {
-
         }
     };
-    
     Handler<ExchangeMsg.Response> handleTManPartnersResponse = new Handler<ExchangeMsg.Response>() {
         @Override
         public void handle(ExchangeMsg.Response event) {
 
+            event.getSelectedBuffer().getDescriptors();
         }
     };
 
-        // TODO - if you call this method with a list of entries, it will
+    // TODO - if you call this method with a list of entries, it will
     // return a single node, weighted towards the 'best' node (as defined by
     // ComparatorById) with the temperature controlling the weighting.
     // A temperature of '1.0' will be greedy and always return the best node.
@@ -139,6 +196,5 @@ public final class TMan extends ComponentDefinition {
             }
         }
         return entries.get(entries.size() - 1);
-    }    
-    
+    }
 }

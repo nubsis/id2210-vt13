@@ -9,6 +9,8 @@ import java.util.Properties;
 
 public final class TManConfiguration {
 
+    public static final int MAX_NEIGHBOUR_COUNT = 5;
+    
     private final long period;
     private final long seed;
     private final double temperature;

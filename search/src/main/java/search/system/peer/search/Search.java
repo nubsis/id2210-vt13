@@ -64,13 +64,14 @@ import tman.system.peer.tman.TManSamplePort;
 public final class Search extends ComponentDefinition {
 
     private static final Logger logger = LoggerFactory.getLogger(Search.class);
-    Positive<IndexPort> indexPort = positive(IndexPort.class);
-    Positive<Network> networkPort = positive(Network.class);
-    Positive<Timer> timerPort = positive(Timer.class);
-    Negative<Web> webPort = negative(Web.class);
-    Positive<CyclonSamplePort> cyclonSamplePort = positive(CyclonSamplePort.class);
-    Positive<TManSamplePort> tmanPort = positive(TManSamplePort.class);
-    ArrayList<Address> neighbours = new ArrayList<Address>();
+    private final Positive<IndexPort> indexPort = positive(IndexPort.class);
+    private final Positive<Network> networkPort = positive(Network.class);
+    private final Positive<Timer> timerPort = positive(Timer.class);
+    private final Negative<Web> webPort = negative(Web.class);
+    private final Positive<CyclonSamplePort> cyclonSamplePort = positive(CyclonSamplePort.class);
+    private final Positive<TManSamplePort> tmanPort = positive(TManSamplePort.class);
+    private final ArrayList<Address> neighbours = new ArrayList<Address>();
+    
     private Address self;
     private SearchConfiguration searchConfiguration;
     // Apache Lucene used for searching
@@ -280,7 +281,7 @@ public final class Search extends ComponentDefinition {
     }
 
     List<Range> getMissingRanges() {
-        List<Range> res = new ArrayList<Range>();
+        List<Range> res = new ArrayList<>();
         IndexReader reader = null;
         IndexSearcher searcher = null;
         try {
@@ -440,7 +441,9 @@ public final class Search extends ComponentDefinition {
     Handler<CyclonSample> handleCyclonSample = new Handler<CyclonSample>() {
         @Override
         public void handle(CyclonSample event) {
+            
             // receive a new list of neighbours
+            
             neighbours.clear();
             neighbours.addAll(event.getSample());
 
@@ -449,7 +452,7 @@ public final class Search extends ComponentDefinition {
                 int partition = p.getId() % searchConfiguration.getNumPartitions();
                 List<PeerDescriptor> nodes = routingTable.get(partition);
                 if (nodes == null) {
-                    nodes = new ArrayList<PeerDescriptor>();
+                    nodes = new ArrayList<>();
                     routingTable.put(partition, nodes);
                 }
                 // Note - this might replace an existing entry in Lucene

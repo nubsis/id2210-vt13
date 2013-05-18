@@ -68,7 +68,7 @@ public final class SearchSimulator extends ComponentDefinition {
         ringNodes = new ConsistentHashtable<Long>();
 
         subscribe(handleInit, control);
-        subscribe(handleGenerateReport, timer);
+        //subscribe(handleGenerateReport, timer);
         subscribe(handlePeerJoin, simulator);
         subscribe(handlePeerFail, simulator);
         subscribe(handleAddIndexEntry, simulator);
@@ -140,6 +140,9 @@ public final class SearchSimulator extends ComponentDefinition {
     Handler<PeerJoin> handlePeerJoin = new Handler<PeerJoin>() {
         @Override
         public void handle(PeerJoin event) {
+            
+            System.err.println("Joined " + event.getPeerId());
+            
             Long id = event.getPeerId();
 
             // join with the next id if this id is taken
