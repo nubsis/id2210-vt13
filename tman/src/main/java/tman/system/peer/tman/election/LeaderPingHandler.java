@@ -16,6 +16,7 @@ import tman.system.peer.tman.messages.LeaderPing.Response;
 
 public class LeaderPingHandler {
 
+    /*
 	private RequestHandler requestHandler;
 	private ResponseHandler responseHandler;
 	TMan tman;
@@ -83,7 +84,7 @@ public class LeaderPingHandler {
 			}
 		}
 
-		/** Get notified about a response coming in */
+		/// Get notified about a response coming in
 		public synchronized void onResponse(Response event) {
 			Request r = waitingRequests.get(event.getId());
 
@@ -113,4 +114,5 @@ public class LeaderPingHandler {
 			waiting.add(id);
 		}
 	}
+    */
 }
