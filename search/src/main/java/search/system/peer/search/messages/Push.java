@@ -1,4 +1,4 @@
-package search.system.peer.messages;
+package search.system.peer.search.messages;
 
 import java.util.List;
 import java.util.UUID;

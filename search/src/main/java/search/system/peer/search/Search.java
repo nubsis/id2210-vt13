@@ -50,12 +50,12 @@ import se.sics.kompics.web.WebResponse;
 import search.simulator.snapshot.Snapshot;
 import search.system.peer.AddIndexText;
 import search.system.peer.IndexPort;
-import search.system.peer.messages.Insert;
-import search.system.peer.messages.Insert.Request;
-import search.system.peer.messages.Push;
-import search.system.peer.messages.Push.Accept;
-import search.system.peer.messages.Push.Offer;
-import search.system.peer.messages.Push.Payload;
+import search.system.peer.search.messages.Insert;
+import search.system.peer.search.messages.Insert.Request;
+import search.system.peer.search.messages.Push;
+import search.system.peer.search.messages.Push.Accept;
+import search.system.peer.search.messages.Push.Offer;
+import search.system.peer.search.messages.Push.Payload;
 import tman.system.peer.tman.TManSample;
 import tman.system.peer.tman.TManSamplePort;
 
