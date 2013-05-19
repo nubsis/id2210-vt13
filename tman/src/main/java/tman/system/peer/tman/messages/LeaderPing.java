@@ -11,9 +11,6 @@ public class LeaderPing {
 
 	public static class Request extends TManMessage
 	{
-		/**
-		 * 
-		 */
 		private static final long serialVersionUID = -3427699928312735280L;
 
 		public Request(Address src, Address dst) {
@@ -23,9 +20,6 @@ public class LeaderPing {
 
 	public static class Response extends TManMessage
 	{
-		/**
-		 * 
-		 */
 		private static final long serialVersionUID = -1872458142914438176L;
 		private final Address leader;
 		private final LeaderStatus status;
