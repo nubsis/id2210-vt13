@@ -14,7 +14,7 @@ import se.sics.kompics.address.Address;
  *
  * @author Andrew
  */
-public class PingTimeouts {
+public class PingTimeoutMap {
 
     private final HashMap<Address, Boolean> neighbours = new HashMap<>();
 
