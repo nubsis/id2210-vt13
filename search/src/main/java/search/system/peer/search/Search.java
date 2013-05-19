@@ -646,7 +646,7 @@ public final class Search extends ComponentDefinition {
 		@Override
 		public void handle(Request event) {
 
-			logger.log(event.getSource() + " requested to add " + event.getTitle());
+
 			// If for some reason this node gets this request without being the leader,
 			// just ignore it.
 			if(leader != self) {
@@ -654,15 +654,17 @@ public final class Search extends ComponentDefinition {
 			}
 			synchronized(sync){
 				if(waiting.containsKey(event.getId())) {
+					logger.log("Still waiting for " + event.getTitle());
 					return;
 				}
 
+				logger.log(event.getSource() + " requested to add " + event.getTitle());
 				int m = maxIndexEntry;
 
 				try {
 					addEntry(event.getTitle(), m);
 					for(Address a : gradientBelow) {
-						trigger(new Push.Offer(self, event.getSource(), m, event.getId()), networkPort);
+						trigger(new Push.Offer(self, a, m, event.getId()), networkPort);
 					}
 					waiting.put(event.getId(), event);
 				} catch (IOException e) {
@@ -679,10 +681,18 @@ public final class Search extends ComponentDefinition {
 			Request q = requests.get(event.getId());
 			if(event.isSuccess()) {
 				requests.remove(event.getId());
-				logger.log("Finished adding " + q.getTitle());
+				logger.log("Yessss, finished adding an entry");
 			} else {
 				logger.log("Failed inserting " + q.getTitle());
 			}
+
+
+			StringBuilder sb = new StringBuilder();
+			for(IndexEntry e : getEntriesGreaterThan(0)) {
+				sb.append("\n\t" + e.getText() + "(" + e.getIndexId() + ")");
+			}
+			logger.log(sb);
+
 		}
 	};
 
