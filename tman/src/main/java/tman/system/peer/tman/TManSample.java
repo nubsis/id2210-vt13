@@ -3,26 +3,30 @@ package tman.system.peer.tman;
 import com.sun.java.swing.plaf.windows.WindowsTreeUI;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 
 
 import se.sics.kompics.Event;
 import se.sics.kompics.address.Address;
 
-
 public class TManSample extends Event {
-	ArrayList<Address> partners = new ArrayList<Address>();
+
+    private final Collection<Address> neighbours;
+    private final Address leader;
+//-------------------------------------------------------------------
+
+    public TManSample(Collection<Address> neighbours, Address leader) {
+        this.neighbours = Collections.unmodifiableCollection(neighbours);
+        this.leader = leader;
+    }
 
 //-------------------------------------------------------------------
-	public TManSample(Collection<Address> partners) {
-		this.partners.clear();
-        this.partners.addAll(partners);
-	}
-        
-	public TManSample() {
-	}
+    public Collection<Address> getNeighbours() {
+        return this.neighbours;
+    }
 
-//-------------------------------------------------------------------
-	public ArrayList<Address> getSample() {
-		return this.partners;
-	}
+    public Address getLeader() {
+        return leader;
+    }
+    
 }

@@ -134,18 +134,17 @@ public final class TMan extends ComponentDefinition {
             election.triggerActionRound();
 
             Collection<Address> neighbours = getGradient().getAll();
-            if (leader != null && leader != self) {
-                neighbours.add(leader);
-            }
 
             timeouts.initialize(neighbours);
+            if (leader != null && leader != self) {
+                timeouts.add(leader);
+                send(new PingRequest(self, leader));
+            }
             for (Address a : neighbours) {
                 send(new PingRequest(self, a));
             }
 
-
-            // Publish sample to connected components
-            //trigger(new TManSample(tmanPartners), tmanPort);
+            trigger(new TManSample(neighbours, leader), tmanPort);
         }
     };
     //-------------------------------------------------------------------	
