@@ -9,6 +9,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.UUID;
 import java.util.logging.Level;
 
 import org.apache.lucene.analysis.standard.StandardAnalyzer;
@@ -34,7 +35,6 @@ import org.apache.lucene.search.TopScoreDocCollector;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.RAMDirectory;
 import org.apache.lucene.util.Version;
-import org.mortbay.log.Log;
 
 import se.sics.kompics.ComponentDefinition;
 import se.sics.kompics.Handler;
@@ -50,6 +50,8 @@ import se.sics.kompics.web.WebResponse;
 import search.simulator.snapshot.Snapshot;
 import search.system.peer.AddIndexText;
 import search.system.peer.IndexPort;
+import search.system.peer.messages.Insert;
+import search.system.peer.messages.Insert.Request;
 import search.system.peer.messages.Push;
 import search.system.peer.messages.Push.Accept;
 import search.system.peer.messages.Push.Offer;
@@ -85,12 +87,21 @@ public final class Search extends ComponentDefinition {
 	private Collection<Address> gradientAbove;
 	private Collection<Address> gradientBelow;
 
+	private final Object[] sync = new Object[]{};
+
+	/** The requests awaiting confirmation from the leader */
+	private final Map<UUID, Insert.Request> requests = new HashMap<>(8);
+	/** The requests awaiting confirmation from the leaders neighbours */
+	private final Map<UUID, Insert.Request> waiting = new HashMap<>(8);
+
+
 	private SearchConfiguration searchConfiguration;
 	// Apache Lucene used for searching
 	StandardAnalyzer analyzer = new StandardAnalyzer(Version.LUCENE_42);
 	Directory index = new RAMDirectory();
 	IndexWriterConfig config = new IndexWriterConfig(Version.LUCENE_42, analyzer);
 	int lastMissingIndexEntry = 0;
+	int lastPushIndex = 0;
 	int maxIndexEntry = 0;
 	Random random;
 	// When you partition the index you need to find new nodes
@@ -118,6 +129,12 @@ public final class Search extends ComponentDefinition {
 		subscribe(handleMissingIndexEntriesRequest, networkPort);
 		subscribe(handleMissingIndexEntriesResponse, networkPort);
 		subscribe(handleTManSample, tmanPort);
+
+		subscribe(handleInsertRequest, networkPort);
+		subscribe(handleInsertResponse, networkPort);
+		subscribe(handlePushAccept, networkPort);
+		subscribe(handlePushOffer, networkPort);
+		subscribe(handlePushPayload, networkPort);
 	}
 	//-------------------------------------------------------------------	
 	Handler<SearchInit> handleInit = new Handler<SearchInit>() {
@@ -224,6 +241,7 @@ public final class Search extends ComponentDefinition {
 		w.addDocument(doc);
 		w.close();
 		Snapshot.incNumIndexEntries(self);
+		maxIndexEntry++;
 	}
 
 	private String query(StringBuilder sb, String querystr) throws ParseException, IOException {
@@ -263,6 +281,38 @@ public final class Search extends ComponentDefinition {
 		@Override
 		public void handle(UpdateIndexTimeout event) {
 
+			// Check if we have something new to push
+			if(lastMissingIndexEntry < maxIndexEntry)
+			{
+				// If so, push to all nodes below in the gradient.
+				UUID id = UUID.randomUUID();
+				if(gradientBelow != null)
+				{
+					for(Address a : gradientBelow)
+					{
+						trigger(new Push.Offer(self, a, maxIndexEntry-1, id), networkPort);
+					}
+				}
+				// If so, push to all nodes below in the gradient.
+				if(gradientAbove!= null)
+				{
+					for(Address a : gradientAbove)
+					{
+						trigger(new Push.Offer(self, a, maxIndexEntry-1, id), networkPort);
+					}
+				}
+			}
+
+			if(leader!=null) {
+				for(Insert.Request rq : requests.values())
+				{
+					logger.log("Trying to insert " + rq.getTitle() + " again...");
+					rq.setDestination(leader);
+					trigger(rq, networkPort);
+				}
+			}
+
+			/*
 			// pick a random neighbour to ask for index updates from. 
 			// You can change this policy if you want to.
 			// Maybe a gradient neighbour who is closer to the leader?
@@ -279,7 +329,8 @@ public final class Search extends ComponentDefinition {
 			MissingIndexEntries.Request req = new MissingIndexEntries.Request(self, dest,
 							missingIndexEntries);
 			trigger(req, networkPort);
-		}
+			 */
+		}		
 	};
 
 	ScoreDoc[] getExistingDocsInRange(int min, int max, IndexReader reader,
@@ -366,7 +417,7 @@ public final class Search extends ComponentDefinition {
 					try {
 						d = searcher.doc(docId);
 						int indexId = Integer.parseInt(d.get("id"));
-						String text = d.get("text");
+						String text = d.get("title");
 						res.add(new IndexEntry(indexId, text));
 					} catch (IOException ex) {
 						java.util.logging.Logger.getLogger(Search.class.getName()).log(Level.SEVERE, null, ex);
@@ -413,7 +464,7 @@ public final class Search extends ComponentDefinition {
 						searcher = new IndexSearcher(reader);
 						d = searcher.doc(docId);
 						int indexId = Integer.parseInt(d.get("id"));
-						String text = d.get("text");
+						String text = d.get("title");
 						res.add(new IndexEntry(indexId, text));
 					} catch (IOException ex) {
 						java.util.logging.Logger.getLogger(Search.class.getName()).log(Level.SEVERE, null, ex);
@@ -458,7 +509,7 @@ public final class Search extends ComponentDefinition {
 
 			// receive a new list of neighbours
 
-			neighbours.clear();
+			/*neighbours.clear();
 			neighbours.addAll(event.getSample());
 
 			// update routing tables
@@ -478,22 +529,20 @@ public final class Search extends ComponentDefinition {
 					nodesToRemove.add(nodes.get(i - 1));
 				}
 				nodes.removeAll(nodesToRemove);
-			}
+			}*/
 		}
 	};
 	//-------------------------------------------------------------------	
 	Handler<AddIndexText> handleAddIndexText = new Handler<AddIndexText>() {
 		@Override
 		public void handle(AddIndexText event) {
-			int id = LeaderEmulator.incIndexId();
-			updateIndexPointers(id);
-			logger.log("adding index entry: " + event.getText() + " (" + id + ")");
 
-			try {
-				addEntry(event.getText(), id);
-			} catch (IOException ex) {
-				java.util.logging.Logger.getLogger(Search.class.getName()).log(Level.SEVERE, null, ex);
-				throw new IllegalArgumentException(ex.getMessage());
+			logger.log("Adding index entry: " + event.getText() + "; " + leader);
+
+			Insert.Request rq = new Insert.Request(self, leader, event.getText());
+			requests.put(rq.getId(), rq);
+			if(leader!=null) {
+				trigger(rq, networkPort);
 			}
 		}
 	};
@@ -507,51 +556,132 @@ public final class Search extends ComponentDefinition {
 			gradientBelow = event.getLowerNeighbours();
 		}
 	};
-	
-	Handler<Push.Offer> handlePushOffer = new Handler<Push.Offer>()
-	{
+
+	Handler<Push.Offer> handlePushOffer = new Handler<Push.Offer>()	{
 		@Override
 		public void handle(Offer event) {
-			if(event.getMaxIndexNumber()<=maxIndexEntry)
+			if(event.getMaxIndexNumber()<=maxIndexEntry) {
 				return;
-			trigger(new Push.Accept(self, event.getSource(), maxIndexEntry), networkPort);
+			}
+			logger.log("Yes, I want to update from " + maxIndexEntry + " to " + event.getMaxIndexNumber());
+			trigger(new Push.Accept(event, maxIndexEntry), networkPort);
 		}
 	};
-	
-	Handler<Push.Accept> handlePushAccept = new Handler<Push.Accept>()
-	{
+
+	Handler<Push.Accept> handlePushAccept = new Handler<Push.Accept>(){
 		@Override
 		public void handle(Accept event) {
+
 			// Double safeguard
-			if(event.getMaxIndexNumber()>=maxIndexEntry)
+			if(event.getMaxIndexNumber()>=maxIndexEntry) {
 				return;
-			trigger(new Push.Payload(self, event.getSource(), getEntriesGreaterThan(event.getMaxIndexNumber())), networkPort);
+			}
+
+			logger.log("Here, have " + event.getMaxIndexNumber() + "-" + (maxIndexEntry-1) + " (" + getEntriesGreaterThan(event.getMaxIndexNumber()).size()+")");
+
+			/*StringBuilder sb = new StringBuilder();
+			for(IndexEntry e : getEntriesGreaterThan(event.getMaxIndexNumber())) {
+				sb.append("\n\t" + e.getText() + "(" + e.getIndexId() + ")");
+			}
+			logger.log(sb);
+			 */
+
+
+			trigger(new Push.Payload(event, getEntriesGreaterThan(event.getMaxIndexNumber())), networkPort);
+
+			UUID id = event.getId();
+
+			// Protection for if the leader goes down.
+			Insert.Request rq = waiting.get(id);
+			if(rq!=null) {
+				// If this doesn't happen, the node that requested the insert
+				// will keep petitioning the leader.
+				trigger(new Insert.Response(rq, true), networkPort);
+				// Remove this event from the queue so we don't send another response.
+				waiting.remove(id);
+			}
+
 		}
 	};
-	
-	Handler<Push.Payload> handlePushPayload = new Handler<Push.Payload>()
-	{
+
+	Handler<Push.Payload> handlePushPayload = new Handler<Push.Payload>(){
 		@Override
 		public void handle(Payload event) {
-			Collections.sort(event.getEntries(), new Comparator<IndexEntry>()
-			{
+			// Make sure the entries are sorted
+			//logger.log("Updating to " + (maxIndexEntry + event.getEntries().size()));
+			Collections.sort(event.getEntries(), new Comparator<IndexEntry>(){
 				@Override
 				public int compare(IndexEntry arg0, IndexEntry arg1) {
 					return arg0.getIndexId() - arg1.getIndexId();
 				}
 			});
+
+			StringBuilder sb = new StringBuilder();
+			// Now, insert the entries in-order.
+			sb.append("Adding:");
 			for(IndexEntry e : event.getEntries())
 			{
-				if(e.getIndexId()!=maxIndexEntry+1)
-					return;
-				
+
+				// Abort if an entry is missing for some reason.
+				if(e.getIndexId()<maxIndexEntry) {
+					sb.append("\n\t-" + e.getText() + " (" + e.getIndexId() + ")");
+					continue;
+				}else
+				{
+					sb.append("\n\t+" + e.getText() + " (" + e.getIndexId() + ")");
+				}
+
 				try {
 					addEntry(e.getText(), e.getIndexId());
-					maxIndexEntry++;
 				} catch (IOException e1) {
 					// Error!
-					Log.warn(e1);
+					logger.log(e1);
 				}
+			}
+			logger.log(sb);
+		}
+	};
+
+	Handler<Insert.Request> handleInsertRequest = new Handler<Insert.Request>(){
+		@Override
+		public void handle(Request event) {
+
+			logger.log(event.getSource() + " requested to add " + event.getTitle());
+			// If for some reason this node gets this request without being the leader,
+			// just ignore it.
+			if(leader != self) {
+				return;
+			}
+			synchronized(sync){
+				if(waiting.containsKey(event.getId())) {
+					return;
+				}
+
+				int m = maxIndexEntry;
+
+				try {
+					addEntry(event.getTitle(), m);
+					for(Address a : gradientBelow) {
+						trigger(new Push.Offer(self, event.getSource(), m, event.getId()), networkPort);
+					}
+					waiting.put(event.getId(), event);
+				} catch (IOException e) {
+					java.util.logging.Logger.getLogger(Search.class.getName()).log(Level.SEVERE, null, e);
+					throw new IllegalArgumentException(e.getMessage());
+				}
+			}
+		}
+	};
+
+	Handler<Insert.Response> handleInsertResponse = new Handler<Insert.Response>(){
+		@Override
+		public void handle(Insert.Response event) {
+			Request q = requests.get(event.getId());
+			if(event.isSuccess()) {
+				requests.remove(event.getId());
+				logger.log("Finished adding " + q.getTitle());
+			} else {
+				logger.log("Failed inserting " + q.getTitle());
 			}
 		}
 	};
