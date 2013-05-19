@@ -105,7 +105,11 @@ public final class TMan extends ComponentDefinition {
             gradient.triggerActionRound();
             election.triggerActionRound();
 
-            trigger(new TManSample(gradient.getAll(), election.getLeader()), tmanPort);
+            trigger(new TManSample(
+                    gradient.getLower(),
+                    gradient.getHigher(),
+                    election.getLeader()),
+                    tmanPort);
         }
     };
     //-------------------------------------------------------------------	
