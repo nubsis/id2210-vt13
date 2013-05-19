@@ -14,14 +14,7 @@ import se.sics.kompics.network.Message;
  */
 public class PingResponse extends Message {
 
-	private final UUID id;
-
-	public PingResponse(PingRequest req) {
-		super(req.getDestination(), req.getSource());
-		id = req.getId();
-	}
-
-	public UUID getId() {
-		return id;
-	}
+    public PingResponse(PingRequest req) {
+        super(req.getDestination(), req.getSource());
+    }
 }

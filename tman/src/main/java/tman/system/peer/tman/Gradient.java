@@ -19,71 +19,89 @@ import common.configuration.TManConfiguration;
  */
 public class Gradient {
 
-	static class GradientComparator implements Comparator<Address> {
+    static class GradientComparator implements Comparator<Address> {
 
-		public enum CompareType {
-			LowToHigh,
-			HighToLow
-		}
-		private final CompareType type;
+        public enum CompareType {
 
-		public GradientComparator(CompareType type) {
-			this.type = type;
-		}
+            LowToHigh,
+            HighToLow
+        }
+        private final CompareType type;
 
-		@Override
-		public int compare(Address a1, Address a2) {
-			return Integer.compare(a1.getId(), a2.getId()) * (type == CompareType.LowToHigh ? 1 : -1);
-		}
-	}
+        public GradientComparator(CompareType type) {
+            this.type = type;
+        }
 
-	private final Address self;
-	private final LinkedList<Address> up = new LinkedList<>();
-	private final LinkedList<Address> down = new LinkedList<>();
+        @Override
+        public int compare(Address a1, Address a2) {
+            return Integer.compare(a1.getId(), a2.getId()) * (type == CompareType.LowToHigh ? 1 : -1);
+        }
+    }
+    private final Address self;
+    private final LinkedList<Address> higher = new LinkedList<>();
+    private final LinkedList<Address> lower = new LinkedList<>();
 
-	public Gradient(Address self) {
-		this.self = self;
-	}
+    public Gradient(Address self) {
+        this.self = self;
+    }
 
-	synchronized public void merge(Collection<Address> newPartners) {
+    synchronized public void merge(Collection<Address> newPartners) {
 
-		for (Address a : newPartners) {
-			if (a.getId() > self.getId() && !getUp().contains(a)) {
-				getUp().add(a);
-			} else if (a.getId() < self.getId() && !down.contains(a)) {
-				down.add(a);
-			}
-		}
+        for (Address a : newPartners) {
+            if (a == null || higher.contains(a) || lower.contains(a)) {
+                continue;
+            }
 
-		Collections.sort(getUp(), new GradientComparator(GradientComparator.CompareType.LowToHigh));
-		Collections.sort(down, new GradientComparator(GradientComparator.CompareType.HighToLow));
+            if (a.getId() > self.getId()) {
+                higher.add(a);
+            } else if (a.getId() < self.getId()) {
+                lower.add(a);
+            }
+        }
 
-		while (getUp().size() > TManConfiguration.MAX_NEIGHBOUR_COUNT) {
-			getUp().removeLast();
-		}
+        Collections.sort(higher, new GradientComparator(GradientComparator.CompareType.LowToHigh));
+        Collections.sort(lower, new GradientComparator(GradientComparator.CompareType.HighToLow));
 
-		while (down.size() > TManConfiguration.MAX_NEIGHBOUR_COUNT) {
-			down.removeLast();
-		}
-	}
+        while (higher.size() > TManConfiguration.GRADIENT_DEPTH) {
+            higher.removeLast();
+        }
 
-	synchronized public Collection<Address> getAll() {
-		LinkedList<Address> neighbours = new LinkedList<>(down);
-		neighbours.addAll(getUp());
-		return neighbours;
-	}
+        while (lower.size() > TManConfiguration.GRADIENT_DEPTH) {
+            lower.removeLast();
+        }
+    }
 
-	synchronized public void remove(Address address) {
-		getUp().remove(address);
-		down.remove(address);
-	}
+    synchronized public Collection<Address> getAll() {
+        LinkedList<Address> neighbours = new LinkedList<>(lower);
+        neighbours.addAll(higher);
+        return neighbours;
+    }
 
-	synchronized public void remove(Collection<Address> addresses) {
-		getUp().removeAll(addresses);
-		down.removeAll(addresses);
-	}
+    synchronized public void remove(Address address) {
+        higher.remove(address);
+        lower.remove(address);
+    }
 
-	public LinkedList<Address> getUp() {
-		return up;
-	}
+    synchronized public void remove(Collection<Address> addresses) {
+        higher.removeAll(addresses);
+        lower.removeAll(addresses);
+    }
+    
+    synchronized public Address getHighest() {
+        return higher.isEmpty() ? null : higher.getLast();
+    }
+    
+    synchronized public Address getLowest() {
+        return lower.isEmpty() ? null : lower.getLast();
+    }
+
+    public Collection<Address> getHigher() {
+        return new LinkedList<>(higher);
+    }
+
+    public Collection<Address> getLower() {
+        return new LinkedList<>(lower);
+    }
+    
+    
 }

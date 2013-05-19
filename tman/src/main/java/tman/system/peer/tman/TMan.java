@@ -18,7 +18,7 @@ import se.sics.kompics.timer.ScheduleTimeout;
 import se.sics.kompics.timer.Timeout;
 import se.sics.kompics.timer.Timer;
 import tman.simulator.snapshot.Snapshot;
-import tman.system.peer.tman.messages.ElectionRequest;
+import tman.system.peer.tman.messages.ElectionStartRequest;
 import tman.system.peer.tman.messages.PingRequest;
 import tman.system.peer.tman.messages.PingResponse;
 import tman.system.peer.tman.messages.TManMessage;
@@ -27,6 +27,7 @@ import common.configuration.TManConfiguration;
 
 import cyclon.system.peer.cyclon.CyclonSample;
 import cyclon.system.peer.cyclon.CyclonSamplePort;
+import se.sics.kompics.network.Message;
 import tman.system.peer.tman.election.ElectionProtocol;
 
 public final class TMan extends ComponentDefinition {
@@ -42,14 +43,13 @@ public final class TMan extends ComponentDefinition {
         }
     }
     private common.Logger.Instance logger;
-    private final ElectionProtocol election = new ElectionProtocol();
+    private final ElectionProtocol election = new ElectionProtocol(this);
     Negative<TManSamplePort> tmanPort = negative(TManSamplePort.class);
     Positive<CyclonSamplePort> cyclonSamplePort = positive(CyclonSamplePort.class);
     Positive<Network> networkPort = positive(Network.class);
     Positive<Timer> timerPort = positive(Timer.class);
     private long period;
     private Address self;
-    private final Address leader = null;
     private final Collection<Address> tmanPartners = new LinkedList<>();
     private Gradient gradient;
     private final PingTimeouts timeouts = new PingTimeouts();
@@ -60,12 +60,12 @@ public final class TMan extends ComponentDefinition {
         return gradient;
     }
 
-    public Address getLeader() {
-        return leader;
-    }
-
     public Logger.Instance getLogger() {
         return logger;
+    }
+
+    public Address getSelf() {
+        return self;
     }
 
     //-------------------------------------------------------------------	
@@ -80,8 +80,9 @@ public final class TMan extends ComponentDefinition {
         subscribe(handlePingRequest, networkPort);
         subscribe(handlePingResponse, networkPort);
 
-        subscribe(election.getHandlerElectionRequest(), networkPort);
-
+        subscribe(election.getHandlerVoteRequest(), networkPort);
+        subscribe(election.getHandlerVoteResponse(), networkPort);
+        subscribe(election.getHandlerAnnouncement(), networkPort);
         //LeaderPingHandler lph = new LeaderPingHandler(this);
         //subscribe(lph.getResponseHandler(), networkPort);
         //subscribe(lph.getRequestHandler(), networkPort);
@@ -94,10 +95,11 @@ public final class TMan extends ComponentDefinition {
      *
      * @param message
      */
-    public void send(TManMessage message) {
-        trigger(message, networkPort);
+    public void send(Message message) {
+        if (message.getSource() != message.getDestination()) {
+            trigger(message, networkPort);
+        }
     }
-
     //-------------------------------------------------------------------	
     Handler<TManInit> handleInit = new Handler<TManInit>() {
         @Override
@@ -123,19 +125,24 @@ public final class TMan extends ComponentDefinition {
             // Snapshot.updateTManPartners(self, tmanPartners);
 
             Collection<Address> timedOut = timeouts.getTimedOut();
-
             getGradient().remove(timedOut);
 
+            Address leader = election.getLeader();
+            if (leader != null && leader != self && timedOut.contains(leader)) {
+                election.leaderTimedOut();
+            }
+            election.triggerActionRound();
+
             Collection<Address> neighbours = getGradient().getAll();
-            if(leader != null) {
+            if (leader != null && leader != self) {
                 neighbours.add(leader);
             }
-            
+
             timeouts.initialize(neighbours);
             for (Address a : neighbours) {
-                trigger(new PingRequest(self, a), networkPort);
+                send(new PingRequest(self, a));
             }
-            
+
 
             // Publish sample to connected components
             //trigger(new TManSample(tmanPartners), tmanPort);

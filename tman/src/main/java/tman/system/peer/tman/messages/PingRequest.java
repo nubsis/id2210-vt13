@@ -15,13 +15,7 @@ import se.sics.kompics.network.Message;
  */
 public class PingRequest extends Message {
 
-	private final UUID id = UUID.randomUUID();
 	public PingRequest(Address src, Address dst) {
 		super(src, dst);
 	}
-
-	public UUID getId() {
-		return id;
-	}
-
 }
