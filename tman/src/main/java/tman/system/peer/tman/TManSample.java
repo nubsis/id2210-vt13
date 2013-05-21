@@ -32,7 +32,7 @@ public class TManSample extends Event {
         return higherNeighbours;
     }
 
-    public Collection<Address> getAll() {
+    public Collection<Address> getAllNeighbours() {
         Collection<Address> all = new LinkedList<>();
         all.addAll(lowerNeighbours);
         all.addAll(higherNeighbours);
