@@ -117,7 +117,6 @@ public final class Search extends ComponentDefinition {
     private final Directory index = new RAMDirectory();
     private final IndexWriterConfig config = new IndexWriterConfig(Version.LUCENE_42, analyzer);
     ////////////////
-    int lastPushIndex = 0;
     int maxIndexEntry = 0;
 
     //-------------------------------------------------------------------	
@@ -253,7 +252,7 @@ public final class Search extends ComponentDefinition {
 
     private boolean addEntry(String title, int id) {
         if (existingIds.contains(id)) {
-            return true;
+            return false;
         }
         try {
             IndexWriter w = new IndexWriter(index, config);
@@ -268,7 +267,7 @@ public final class Search extends ComponentDefinition {
             Snapshot.incNumIndexEntries(self);
             existingIds.add(id);
             maxIndexEntry = Math.max(maxIndexEntry, id);
-            logger.log("[ADDING] " + id + ": " + title);
+            //logger.log("[ADDING] " + id + ": " + title);
             return true;
         } catch (IOException ex) {
             Logger.getLogger(Search.class.getName()).log(Level.SEVERE, null, ex);
@@ -367,7 +366,7 @@ public final class Search extends ComponentDefinition {
         public void handle(AddIndexText event) {
 
             synchronized (sync) {
-                logger.log("Adding index entry: " + event.getText() + "; " + leader);
+                logger.log("Adding index entry: " + event.getText() + "; sending request to leader " + leader);
 
                 Insert.Request rq = new Insert.Request(self, leader, event.getText());
                 requests.put(rq.getId(), rq);
@@ -434,11 +433,6 @@ public final class Search extends ComponentDefinition {
             synchronized (sync) {
                 Collection<Integer> missingIds = getMissingIds(event.getEntryId());
                 if (!missingIds.isEmpty()) {
-                    String s = "Yes, I want to get: ";
-                    for (int i : missingIds) {
-                        s += " " + i;
-                    }
-                    logger.log(s);
                     trigger(new Push.Accept(event, missingIds), networkPort);
                 }
             }
@@ -450,19 +444,7 @@ public final class Search extends ComponentDefinition {
 
             synchronized (sync) {
                 LinkedList<Integer> missingIds = new LinkedList<>(event.getMissingIds());
-
-                String s = "Hey, " + event.getSource() + ", you want " + missingIds.size() + " entries: ";
-                for (int i : event.getMissingIds()) {
-                    s += " " + i;
-                }
-                s += "... I have: ";
-
                 List<IndexEntry> entries = getEntries(missingIds);
-                for (IndexEntry e : entries) {
-                    s += "\n\t" + e.getIndexId() + ": " + e.getText();
-                }
-                logger.log(s);
-
                 if (!entries.isEmpty()) {
                     trigger(new Push.Payload(event, entries), networkPort);
                 }
@@ -471,7 +453,7 @@ public final class Search extends ComponentDefinition {
 
                 // Protection for if the leader goes down.
                 Insert.Request request = waiting.get(id);
-                if (request != null) {
+                if (request != null && missingIds.contains(request.getEntryId())) {
                     // If this doesn't happen, the node that requested the insert
                     // will keep petitioning the leader.
                     trigger(new Insert.Response(request, true), networkPort);
@@ -487,23 +469,14 @@ public final class Search extends ComponentDefinition {
             // Make sure the entries are sorted
             //logger.log("Updating to " + (maxIndexEntry + event.getEntries().size()));
             synchronized (sync) {
-                Collections.sort(event.getEntries(), new Comparator<IndexEntry>() {
-                    @Override
-                    public int compare(IndexEntry arg0, IndexEntry arg1) {
-                        return arg0.getIndexId() - arg1.getIndexId();
+                boolean log = false;
+                for (IndexEntry e : event.getEntries()) {
+                    if (addEntry(e.getText(), e.getIndexId())) {
+                        log = true;
                     }
-                });
-
-                StringBuilder sb = new StringBuilder();
-                // Now, insert the entries in-order.
-                sb.append("Received from ").append(event.getSource().toString()).append(": ");
-                for (IndexEntry e : event.getEntries()) {
-                    sb.append(e.getIndexId()).append("; ");
                 }
-                logger.log(sb);
-
-                for (IndexEntry e : event.getEntries()) {
-                    addEntry(e.getText(), e.getIndexId());
+                if (log) {
+                    logger.log("I now have " + existingIds.size() + " entries in the index");
                 }
             }
         }
@@ -519,10 +492,7 @@ public final class Search extends ComponentDefinition {
                     return;
                 }
 
-                if (waiting.containsKey(event.getId())) {
-                    logger.log("Still waiting for " + event.getTitle());
-                } else {
-
+                if (!waiting.containsKey(event.getId())) {
                     event.setEntryId(maxIndexEntry + 1);
 
                     if (!addEntry(event.getTitle(), event.getEntryId())) {
@@ -532,6 +502,7 @@ public final class Search extends ComponentDefinition {
 
                     logger.log(event.getSource() + " requested to add " + event.getTitle() + " | assigned " + event.getEntryId());
                     waiting.put(event.getId(), event);
+                } else {
                 }
 
                 for (Address address : gradientBelow) {
@@ -551,7 +522,7 @@ public final class Search extends ComponentDefinition {
                 if (event.isSuccess()) {
                     requests.remove(event.getRequestId());
                     addEntry(request.getTitle(), event.getEntryId());
-                    logger.log("Yessss, finished adding an entry: " + event.getEntryId() + " " + request.getTitle());
+                    logger.log("Finished adding an entry: " + event.getEntryId() + " " + request.getTitle());
                 } else {
                     logger.log("Failed inserting " + request.getTitle());
                 }

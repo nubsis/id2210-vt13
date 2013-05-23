@@ -13,7 +13,6 @@ import se.sics.kompics.address.Address;
 
 import common.configuration.TManConfiguration;
 import cyclon.system.peer.cyclon.CyclonSample;
-import java.util.List;
 import java.util.Random;
 import se.sics.kompics.Handler;
 import tman.system.peer.tman.messages.NeighbourExchange;

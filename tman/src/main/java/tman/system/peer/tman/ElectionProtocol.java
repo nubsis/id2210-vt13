@@ -97,7 +97,18 @@ public class ElectionProtocol {
         @Override
         public void handle(LeaderElection.VoteResponse e) {
             synchronized (sync) {
+                if (!e.isAccepted()) {
+                    election.stop();
+                    return;
+                }
                 election.answerReceived(e.getSource(), e.isAccepted());
+                if (election.isElected()) {
+                    tman.getLogger().log("[NEW_LEADER][SELF]");
+                    setLeader(tman.getSelf());
+                    for (Address a : tman.getGradient().getLower()) {
+                        tman.send(new LeaderElection.Announcement(leader, a, leader));
+                    }
+                }
             }
         }
     };
@@ -155,27 +166,6 @@ public class ElectionProtocol {
         }
     };
 
-    private void checkElection() {
-        synchronized (sync) {
-            if (!election.isInProgress()) {
-                return;
-            }
-            // yep, let's check if we are elected
-            if (election.isElected()) {
-                // seems that everyone agrees
-                // let's tell everyone that I'm the leader!
-                tman.getLogger().log("[NEW_LEADER][SELF]");
-                setLeader(tman.getSelf());
-                for (Address a : tman.getGradient().getLower()) {
-                    tman.send(new LeaderElection.Announcement(leader, a, leader));
-                }
-            } else {
-                // that's a pity...
-            }
-            election.stop();
-        }
-    }
-
     private boolean checkLeadership() {
         synchronized (sync) {
 
@@ -220,8 +210,8 @@ public class ElectionProtocol {
             }
 
             if (election.isInProgress()) {
-                // let's check that election
-                checkElection();
+                // let's stop the election as we are not elected...
+                election.stop();
             } // no, let's check whether we can be the leader
             else if (!checkLeadership()) {
                 // no, we cannot be the leader... let's ask somebody
