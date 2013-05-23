@@ -209,6 +209,7 @@ public final class Search extends ComponentDefinition {
 						throw new Exception();
 					}
 				} catch (Exception ex) {
+					ex.printStackTrace();
 					response = "Invalid request";
 				}
 				trigger(new WebResponse( response, event, 1, 1), webPort);
