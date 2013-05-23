@@ -1,6 +1,8 @@
 package tman.system.peer.tman;
 
 import common.Logger;
+import common.configuration.TManConfiguration;
+import cyclon.system.peer.cyclon.CyclonSample;
 
 import se.sics.kompics.ComponentDefinition;
 import se.sics.kompics.Handler;
@@ -15,8 +17,8 @@ import se.sics.kompics.timer.Timeout;
 import se.sics.kompics.timer.Timer;
 
 import cyclon.system.peer.cyclon.CyclonSamplePort;
-import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import tman.system.peer.tman.messages.Ping;
 
 public final class TMan extends ComponentDefinition {
@@ -36,10 +38,11 @@ public final class TMan extends ComponentDefinition {
     Positive<Network> networkPort = positive(Network.class);
     Positive<Timer> timerPort = positive(Timer.class);
     private common.Logger.Instance logger;
-    private final Map<Integer, Address> partitionRoutes = new HashMap<>();
+    private final Map<Integer, Address> partitionRoutes = new ConcurrentHashMap<>();
     private final ElectionProtocol election = new ElectionProtocol(this);
     private final Gradient gradient = new Gradient(this);
     private Address self;
+    private int partitionId;
 
     public Gradient getGradient() {
         return gradient;
@@ -53,13 +56,18 @@ public final class TMan extends ComponentDefinition {
         return self;
     }
 
+    public int getPartitionId() {
+        return partitionId;
+    }
+
     //-------------------------------------------------------------------	
     public TMan() {
 
-        subscribe(handleInit, control);
-        subscribe(handleRound, timerPort);
+        subscribe(handlerInit, control);
+        subscribe(handlerRound, timerPort);
 
-        subscribe(handlePingRequest, networkPort);
+        subscribe(handlerPingRequest, networkPort);
+        subscribe(handlerCyclonSample, cyclonSamplePort);
 
         subscribe(gradient.getHandleCyclonSample(), cyclonSamplePort);
         subscribe(gradient.getHandleExchangeRequest(), networkPort);
@@ -87,12 +95,13 @@ public final class TMan extends ComponentDefinition {
         }
     }
     //-------------------------------------------------------------------	
-    private Handler<TManInit> handleInit = new Handler<TManInit>() {
+    private Handler<TManInit> handlerInit = new Handler<TManInit>() {
         @Override
         public void handle(TManInit init) {
 
             self = init.getSelf();
-            logger = new common.Logger.Instance(self.toString());
+            partitionId = self.getId() % TManConfiguration.PARTITION_COUNT;
+            logger = new common.Logger.Instance(self + "[" + partitionId + "]");
 
             SchedulePeriodicTimeout rst = new SchedulePeriodicTimeout(10000, 5000);
 
@@ -101,7 +110,7 @@ public final class TMan extends ComponentDefinition {
         }
     };
     //-------------------------------------------------------------------	
-    private Handler<TManSchedule> handleRound = new Handler<TManSchedule>() {
+    private Handler<TManSchedule> handlerRound = new Handler<TManSchedule>() {
         @Override
         public void handle(TManSchedule event) {
 
@@ -114,13 +123,27 @@ public final class TMan extends ComponentDefinition {
                     partitionRoutes,
                     election.getLeader()),
                     tmanPort);
+            
         }
     };
     //-------------------------------------------------------------------	
-    private Handler<Ping.Request> handlePingRequest = new Handler<Ping.Request>() {
+    private Handler<Ping.Request> handlerPingRequest = new Handler<Ping.Request>() {
         @Override
         public void handle(Ping.Request request) {
             trigger(new Ping.Response(request), networkPort);
+        }
+    };
+    //------------------------------------------------------------------
+    private Handler<CyclonSample> handlerCyclonSample = new Handler<CyclonSample>() {
+        @Override
+        public void handle(CyclonSample event) {
+
+            for (Address address : event.getSample()) {
+                int addressPartition = address.getId() % TManConfiguration.PARTITION_COUNT;
+                if (partitionId != addressPartition) {
+                    partitionRoutes.put(addressPartition, address);
+                }
+            }
         }
     };
 }

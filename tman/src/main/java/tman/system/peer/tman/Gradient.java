@@ -52,19 +52,19 @@ public class Gradient {
         this.tman = tman;
     }
     //-------------------------------------------------------------------	
-    private Handler<CyclonSample> handleCyclonSample = new Handler<CyclonSample>() {
+    private Handler<CyclonSample> handlerCyclonSample = new Handler<CyclonSample>() {
         @Override
         public void handle(CyclonSample event) {
             merge(event.getSample());
         }
     };
-    private Handler<NeighbourExchange.Request> handleExchangeRequest = new Handler<NeighbourExchange.Request>() {
+    private Handler<NeighbourExchange.Request> handlerExchangeRequest = new Handler<NeighbourExchange.Request>() {
         @Override
         public void handle(NeighbourExchange.Request event) {
             tman.send(new NeighbourExchange.Response(tman.getSelf(), event.getSource(), getAll()));
         }
     };
-    private Handler<NeighbourExchange.Response> handleExchangeResponse = new Handler<NeighbourExchange.Response>() {
+    private Handler<NeighbourExchange.Response> handlerExchangeResponse = new Handler<NeighbourExchange.Response>() {
         @Override
         public void handle(NeighbourExchange.Response event) {
             merge(event.getNeighbours());
@@ -78,15 +78,15 @@ public class Gradient {
     };
 
     public Handler<CyclonSample> getHandleCyclonSample() {
-        return handleCyclonSample;
+        return handlerCyclonSample;
     }
 
     public Handler<NeighbourExchange.Request> getHandleExchangeRequest() {
-        return handleExchangeRequest;
+        return handlerExchangeRequest;
     }
 
     public Handler<NeighbourExchange.Response> getHandleExchangeResponse() {
-        return handleExchangeResponse;
+        return handlerExchangeResponse;
     }
 
     public Handler<Ping.Response> getHandlerPingResponse() {
@@ -96,7 +96,11 @@ public class Gradient {
     synchronized private void merge(Collection<Address> newPartners) {
 
         for (Address a : newPartners) {
-            if (a == null || higher.contains(a) || lower.contains(a)) {
+            if (
+                    a == null ||
+                    a.getId() % TManConfiguration.PARTITION_COUNT != tman.getPartitionId() ||
+                    higher.contains(a) ||
+                    lower.contains(a)) {
                 continue;
             }
 
