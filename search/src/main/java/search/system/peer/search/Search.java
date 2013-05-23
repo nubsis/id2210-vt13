@@ -73,735 +73,675 @@ import cyclon.system.peer.cyclon.CyclonSamplePort;
 
 /**
  * Should have some comments here.
- * 
+ *
  * @author jdowling
  */
 public final class Search extends ComponentDefinition {
 
-	public static class SearchSchedule extends Timeout {
+    public static class SearchSchedule extends Timeout {
 
-		public SearchSchedule(SchedulePeriodicTimeout request)
-		{
-			super(request);
-		}
+        public SearchSchedule(SchedulePeriodicTimeout request) {
+            super(request);
+        }
 
-		public SearchSchedule(ScheduleTimeout request)
-		{
-			super(request);
-		}
-	}
+        public SearchSchedule(ScheduleTimeout request) {
+            super(request);
+        }
+    }
 
-	private common.Logger.Instance			 logger;
-	private final Positive<IndexPort>		  indexPort		= positive(IndexPort.class);
-	private final Positive<Network>			networkPort	  = positive(Network.class);
-	private final Positive<Timer>			  timerPort		= positive(Timer.class);
-	private final Negative<Web>				webPort		  = negative(Web.class);
-	private final Positive<CyclonSamplePort>   cyclonSamplePort = positive(CyclonSamplePort.class);
-	private final Positive<TManSamplePort>	 tmanPort		 = positive(TManSamplePort.class);
+    public static class SearchTimeout extends Timeout {
 
-	// /////////
-	private Address							self;
-	private Address							leader;
-	private Collection<Address>				allNeighbours	= new LinkedList<>();
-	private Collection<Address>				gradientAbove	= new LinkedList<>();
-	private Collection<Address>				gradientBelow	= new LinkedList<>();
-	private Map<Integer, Address>			  routes;
-	private final Object					   sync			 = new Object();
-	/**
-	 * The requests awaiting confirmation from the leader key - source|uuid
-	 */
-	private final Map<String, Insert.Request>  requests		 = new HashMap<>(
-					8);
-	/**
-	 * The requests awaiting confirmation from the leaders neighbours key -
-	 * source|uuid
-	 */
-	private final Map<String, Insert.Request>  waiting		  = new HashMap<>(
-					8);
-	private final Set<Integer>				 existingIds	  = new HashSet<>();
-	private final Map<UUID, SearchRequestInfo> pendingSearches  = new HashMap<>();
-	// ///////////////
-	private SearchConfiguration				searchConfiguration;
-	// Apache Lucene used for searching
-	private final StandardAnalyzer			 analyzer		 = new StandardAnalyzer(
-					Version.LUCENE_42);
-	private final Directory					index			= new RAMDirectory();
-	private final IndexWriterConfig			config		   = new IndexWriterConfig(
-					Version.LUCENE_42,
-					analyzer);
-	// //////////////
-	int										maxIndexEntry	= 0;
+        private final UUID id;
 
-	// -------------------------------------------------------------------
-	public Search()
-	{
+        public SearchTimeout(UUID id, ScheduleTimeout timeout) {
+            super(timeout);
+            this.id = id;
+        }
 
-		subscribe(handleInit, control);
-		subscribe(handleWebRequest, webPort);
-		subscribe(handlerCyclonSample, cyclonSamplePort);
-		subscribe(handlerAddIndexText, indexPort);
-		subscribe(handlerSchedule, timerPort);
-		subscribe(handlerTManSample, tmanPort);
+        public UUID getId() {
+            return id;
+        }
+    }
+    private common.Logger.Instance logger;
+    private final Positive<IndexPort> indexPort = positive(IndexPort.class);
+    private final Positive<Network> networkPort = positive(Network.class);
+    private final Positive<Timer> timerPort = positive(Timer.class);
+    private final Negative<Web> webPort = negative(Web.class);
+    private final Positive<CyclonSamplePort> cyclonSamplePort = positive(CyclonSamplePort.class);
+    private final Positive<TManSamplePort> tmanPort = positive(TManSamplePort.class);
+    // /////////
+    private Address self;
+    private Address leader;
+    private Collection<Address> allNeighbours = new LinkedList<>();
+    private Collection<Address> gradientAbove = new LinkedList<>();
+    private Collection<Address> gradientBelow = new LinkedList<>();
+    private Map<Integer, Address> routes = new HashMap<>(TManConfiguration.PARTITION_COUNT);
+    private final Object sync = new Object();
+    /**
+     * The requests awaiting confirmation from the leader key - source|uuid
+     */
+    private final Map<String, Insert.Request> requests = new HashMap<>(8);
+    /**
+     * The requests awaiting confirmation from the leaders neighbours key -
+     * source|uuid
+     */
+    private final Map<String, Insert.Request> waiting = new HashMap<>(8);
+    private final Set<Integer> existingIds = new HashSet<>();
+    private final Map<UUID, SearchRequestInfo> pendingSearches = new HashMap<>();
+    // ///////////////
+    private SearchConfiguration searchConfiguration;
+    // Apache Lucene used for searching
+    private final StandardAnalyzer analyzer = new StandardAnalyzer(
+            Version.LUCENE_42);
+    private final Directory index = new RAMDirectory();
+    private final IndexWriterConfig config = new IndexWriterConfig(
+            Version.LUCENE_42,
+            analyzer);
+    // //////////////
+    int maxIndexEntry = 0;
 
-		subscribe(handlerInsertRequest, networkPort);
-		subscribe(handlerInsertResponse, networkPort);
-		subscribe(handlerPushAccept, networkPort);
-		subscribe(handlerPushOffer, networkPort);
-		subscribe(handlerPushPayload, networkPort);
-	}
+    // -------------------------------------------------------------------
+    public Search() {
 
-	// -------------------------------------------------------------------
-	Handler<SearchInit> handleInit	   = new Handler<SearchInit>() {
-		@Override
-		public void handle(SearchInit init) {
-			synchronized (sync) {
-				self = init.getSelf();
-				logger = new common.Logger.Instance(self + "[" + self.getId() % TManConfiguration.PARTITION_COUNT + "]");
-				searchConfiguration = init
-								.getConfiguration();
+        subscribe(handleInit, control);
+        subscribe(handleWebRequest, webPort);
+        subscribe(handlerCyclonSample, cyclonSamplePort);
+        subscribe(handlerAddIndexText, indexPort);
+        subscribe(handlerSchedule, timerPort);
+        subscribe(handlerSearchTimeout, timerPort);
+        subscribe(handlerTManSample, tmanPort);
 
-				long period = searchConfiguration
-								.getPeriod();
-				SchedulePeriodicTimeout rst = new SchedulePeriodicTimeout(
-								period,
-								period);
-				rst.setTimeoutEvent(new SearchSchedule(
-								rst));
-				trigger(rst, timerPort);
+        subscribe(handlerInsertRequest, networkPort);
+        subscribe(handlerInsertResponse, networkPort);
+        subscribe(handlerPushAccept, networkPort);
+        subscribe(handlerPushOffer, networkPort);
+        subscribe(handlerPushPayload, networkPort);
+        subscribe(handlerFindRequest, networkPort);
+        subscribe(handlerFindResponse, networkPort);
+     
+        
+    }
+    // -------------------------------------------------------------------
+    Handler<SearchInit> handleInit = new Handler<SearchInit>() {
+        @Override
+        public void handle(SearchInit init) {
+            synchronized (sync) {
+                self = init.getSelf();
+                logger = new common.Logger.Instance(self + "[" + self.getId() % TManConfiguration.PARTITION_COUNT + "]");
+                searchConfiguration = init
+                        .getConfiguration();
 
-				// TODO super ugly
-				// workaround...
-				IndexWriter writer;
-				try {
-					writer = new IndexWriter(
-									index,
-									config);
-					writer.commit();
-					writer.close();
-				} catch (IOException e) {
-					// TODO Auto-generated
-					// catch block
-					e.printStackTrace();
-				}
-			}
-		}
-	};
-	Handler<WebRequest> handleWebRequest = new Handler<WebRequest>() {
-		@Override
-		public void handle(WebRequest event) {
+                long period = searchConfiguration.getPeriod();
+                SchedulePeriodicTimeout rst = new SchedulePeriodicTimeout(
+                        period,
+                        period);
+                rst.setTimeoutEvent(new SearchSchedule(rst));
+                
+                trigger(rst, timerPort);
 
-			synchronized (sync) {
-				String[] args = event
-								.getTarget()
-								.split("-");
+                // TODO super ugly
+                // workaround...
+                IndexWriter writer;
+                try {
+                    writer = new IndexWriter(
+                            index,
+                            config);
+                    writer.commit();
+                    writer.close();
+                } catch (IOException e) {
+                    // TODO Auto-generated
+                    // catch block
+                    e.printStackTrace();
+                }
+            }
+        }
+    };
+    Handler<WebRequest> handleWebRequest = new Handler<WebRequest>() {
+        @Override
+        public void handle(WebRequest event) {
 
-				String response;
+            synchronized (sync) {
+                String[] args = event.getTarget().split("-");
 
-				try {
-					if (args[0].compareToIgnoreCase("search") == 0) {
-						triggerSearch(event, args[1]);
-						return;
-					} else if (args[0]
-									.compareToIgnoreCase("add") == 0) {
-						response = addEntryHtml(args[1]);
-					} else {
-						throw new Exception();
-					}
-				} catch (Exception ex) {
-					ex.printStackTrace();
-					response = "Invalid request";
-				}
-				trigger(new WebResponse( response, event, 1, 1), webPort);
-			}
-		}
-	};
+                String response;
 
-	private void triggerSearch(WebRequest request, String query) {
-		logger.log("Starting search for " + query);
-		SearchRequestInfo sfi = new SearchRequestInfo(request);
-		UUID id = UUID.randomUUID();
-		pendingSearches.put(id, sfi);
-		for (Address a : routes.values()) {
-			Find.Request r = new Find.Request(self, a, query, id);
-			sfi.addPartitionRequestId(a);
-			trigger(r, networkPort);
-		}
-		Find.Request r = new Find.Request(self, self, query, id);
-		sfi.addPartitionRequestId(self);
-		// Send to switch thread
-		trigger(r, networkPort);
-	}
+                try {
+                    if (args[0].compareToIgnoreCase("search") == 0) {
+                        triggerSearch(event, args[1]);
+                        return;
+                    } else if (args[0]
+                            .compareToIgnoreCase("add") == 0) {
+                        response = addEntryHtml(args[1]);
+                    } else {
+                        throw new Exception();
+                    }
+                } catch (Exception ex) {
+                    ex.printStackTrace();
+                    response = "Invalid request";
+                }
+                trigger(new WebResponse(response, event, 1, 1), webPort);
+            }
+        }
+    };
 
-	private String searchPageHtml(Collection<IndexEntry> entries) {
-		StringBuilder sb = new StringBuilder("<!DOCTYPE html PUBLIC \"-//W3C");
-		sb.append("//DTD XHTML 1.0 Transitional//EN\" \"http://www.w3.org/TR");
-		sb.append("/xhtml1/DTD/xhtml1-transitional.dtd\"><html xmlns=\"http:");
-		sb.append("//www.w3.org/1999/xhtml\"><head><meta http-equiv=\"Conten");
-		sb.append("t-Type\" content=\"text/html; charset=utf-8\" />");
-		sb.append("<title>Kompics P2P Bootstrap Server</title>");
-		sb.append("<style type=\"text/css\"><!--.style2 {font-family: ");
-		sb.append("Arial, Helvetica, sans-serif; color: #0099FF;}--></style>");
-		sb.append("</head><body><h2 align=\"center\" class=\"style2\">");
-		sb.append("ID2210 (Decentralized Search for Piratebay)</h2><br>");
+    private void triggerSearch(WebRequest request, String query) {
+        logger.log("Starting search for " + query);
+        SearchRequestInfo sfi = new SearchRequestInfo(request);
+        UUID id = UUID.randomUUID();
+        pendingSearches.put(id, sfi);
+        for (Address a : routes.values()) {
+            Find.Request r = new Find.Request(self, a, query, id);
+            sfi.addPartitionRequestId(a);
+            trigger(r, networkPort);
+        }
+        Find.Request r = new Find.Request(self, self, query, id);
+        sfi.addPartitionRequestId(self);
+        // Send to switch thread
+        trigger(r, networkPort);
+        
+        ScheduleTimeout to = new ScheduleTimeout(3000);
+        to.setTimeoutEvent(new SearchTimeout(id, to));
+        trigger(to, timerPort);
+    }
 
-		sb.append("Found ").append(entries.size()).append(" entries.<ul>");
-		for (IndexEntry e : entries) {
-			sb.append("<li>");
-			sb.append(e.getText());
-			sb.append("</li>");
-		}
-		sb.append("</ul>");
+    private String searchPageHtml(Collection<IndexEntry> entries) {
+        StringBuilder sb = new StringBuilder("<!DOCTYPE html PUBLIC \"-//W3C");
+        sb.append("//DTD XHTML 1.0 Transitional//EN\" \"http://www.w3.org/TR");
+        sb.append("/xhtml1/DTD/xhtml1-transitional.dtd\"><html xmlns=\"http:");
+        sb.append("//www.w3.org/1999/xhtml\"><head><meta http-equiv=\"Conten");
+        sb.append("t-Type\" content=\"text/html; charset=utf-8\" />");
+        sb.append("<title>Kompics P2P Bootstrap Server</title>");
+        sb.append("<style type=\"text/css\"><!--.style2 {font-family: ");
+        sb.append("Arial, Helvetica, sans-serif; color: #0099FF;}--></style>");
+        sb.append("</head><body><h2 align=\"center\" class=\"style2\">");
+        sb.append("ID2210 (Decentralized Search for Piratebay)</h2><br>");
 
-		sb.append("</body></html>");
-		return sb.toString();
-	}
+        sb.append("Found ").append(entries.size()).append(" entries.<ul>");
+        for (IndexEntry e : entries) {
+            sb.append("<li>");
+            sb.append(e.getText());
+            sb.append("</li>");
+        }
+        sb.append("</ul>");
 
-	private String addEntryHtml(String title) {
-		StringBuilder sb = new StringBuilder("<!DOCTYPE html PUBLIC \"-//W3C");
-		sb.append("//DTD XHTML 1.0 Transitional//EN\" \"http://www.w3.org/TR");
-		sb.append("/xhtml1/DTD/xhtml1-transitional.dtd\"><html xmlns=\"http:");
-		sb.append("//www.w3.org/1999/xhtml\"><head><meta http-equiv=\"Conten");
-		sb.append("t-Type\" content=\"text/html; charset=utf-8\" />");
-		sb.append("<title>Adding an Entry</title>");
-		sb.append("<style type=\"text/css\"><!--.style2 {font-family: ");
-		sb.append("Arial, Helvetica, sans-serif; color: #0099FF;}--></style>");
-		sb.append("</head><body><h2 align=\"center\" class=\"style2\">");
-		sb.append("ID2210 Uploaded Entry</h2><br>");
-		try {
-			handlerAddIndexText.handle(new AddIndexText(title));
-			sb.append("Entry: ").append(title);
-		} catch (Exception ex) {
-			sb.append(ex.getMessage());
-			java.util.logging.Logger.getLogger(Search.class.getName()).log(
-							Level.SEVERE, null, ex);
-		}
-		sb.append("</body></html>");
-		return sb.toString();
-	}
+        sb.append("</body></html>");
+        return sb.toString();
+    }
 
-	private Collection<Integer> getMissingIds(int lastId) {
-		int missingCount = lastId - existingIds.size();
-		Collection<Integer> missingIds = new ArrayList<>();
-		if (missingCount > 0) {
-			for (int i = lastId; i > 0 && missingCount > 0; --i) {
-				if (!existingIds.contains(i)) {
-					missingIds.add(i);
-					missingCount--;
-				}
-			}
-		} else if (!existingIds.contains(lastId)) {
-			missingIds.add(lastId);
-		}
-		return missingIds;
-	}
+    private String addEntryHtml(String title) {
+        StringBuilder sb = new StringBuilder("<!DOCTYPE html PUBLIC \"-//W3C");
+        sb.append("//DTD XHTML 1.0 Transitional//EN\" \"http://www.w3.org/TR");
+        sb.append("/xhtml1/DTD/xhtml1-transitional.dtd\"><html xmlns=\"http:");
+        sb.append("//www.w3.org/1999/xhtml\"><head><meta http-equiv=\"Conten");
+        sb.append("t-Type\" content=\"text/html; charset=utf-8\" />");
+        sb.append("<title>Adding an Entry</title>");
+        sb.append("<style type=\"text/css\"><!--.style2 {font-family: ");
+        sb.append("Arial, Helvetica, sans-serif; color: #0099FF;}--></style>");
+        sb.append("</head><body><h2 align=\"center\" class=\"style2\">");
+        sb.append("ID2210 Uploaded Entry</h2><br>");
+        try {
+            handlerAddIndexText.handle(new AddIndexText(title));
+            sb.append("Entry: ").append(title);
+        } catch (Exception ex) {
+            sb.append(ex.getMessage());
+            java.util.logging.Logger.getLogger(Search.class.getName()).log(
+                    Level.SEVERE, null, ex);
+        }
+        sb.append("</body></html>");
+        return sb.toString();
+    }
 
-	private boolean addEntry(String title, int id) {
-		if (existingIds.contains(id)) {
-			return false;
-		}
-		try {
-			IndexWriter w = new IndexWriter(index, config);
-			Document doc = new Document();
-			doc.add(new TextField("title", title, Field.Store.YES));
-			// Use a NumericRangeQuery to find missing index entries:
-			// http://lucene.apache.org/core/4_2_0/core/org/apache/lucene/search/NumericRangeQuery.html
-			// http://lucene.apache.org/core/4_2_0/core/org/apache/lucene/document/IntField.html
-			doc.add(new IntField("id", id, Field.Store.YES));
-			w.addDocument(doc);
-			w.close();
-			Snapshot.incNumIndexEntries(self);
-			existingIds.add(id);
-			maxIndexEntry = Math.max(maxIndexEntry, id);
-			// logger.log("[ADDING] " + id + ": " + title);
-			return true;
-		} catch (IOException ex) {
-			Logger.getLogger(Search.class.getName())
-			.log(Level.SEVERE, null, ex);
-			return false;
-		}
-	}
+    private Collection<Integer> getMissingIds(int lastId) {
+        int missingCount = lastId - existingIds.size();
+        Collection<Integer> missingIds = new ArrayList<>();
+        if (missingCount > 0) {
+            for (int i = lastId; i > 0 && missingCount > 0; --i) {
+                if (!existingIds.contains(i)) {
+                    missingIds.add(i);
+                    missingCount--;
+                }
+            }
+        } else if (!existingIds.contains(lastId)) {
+            missingIds.add(lastId);
+        }
+        return missingIds;
+    }
 
-	private String query(StringBuilder sb, String querystr)
-					throws ParseException, IOException {
+    private boolean addEntry(String title, int id) {
+        if (existingIds.contains(id)) {
+            return false;
+        }
+        try {
+            IndexWriter w = new IndexWriter(index, config);
+            Document doc = new Document();
+            doc.add(new TextField("title", title, Field.Store.YES));
+            // Use a NumericRangeQuery to find missing index entries:
+            // http://lucene.apache.org/core/4_2_0/core/org/apache/lucene/search/NumericRangeQuery.html
+            // http://lucene.apache.org/core/4_2_0/core/org/apache/lucene/document/IntField.html
+            doc.add(new IntField("id", id, Field.Store.YES));
+            w.addDocument(doc);
+            w.close();
+            Snapshot.incNumIndexEntries(self);
+            existingIds.add(id);
+            maxIndexEntry = Math.max(maxIndexEntry, id);
+            // logger.log("[ADDING] " + id + ": " + title);
+            return true;
+        } catch (IOException ex) {
+            Logger.getLogger(Search.class.getName())
+                    .log(Level.SEVERE, null, ex);
+            return false;
+        }
+    }
 
-		// the "title" arg specifies the default field to use when no field is
-		// explicitly specified in the query.
-		Query q = new QueryParser(Version.LUCENE_42, "title", analyzer)
-		.parse(querystr);
-		IndexSearcher searcher = null;
-		IndexReader reader = null;
-		try {
-			reader = DirectoryReader.open(index);
-			searcher = new IndexSearcher(reader);
-		} catch (IOException ex) {
-			java.util.logging.Logger.getLogger(Search.class.getName()).log(
-							Level.SEVERE, null, ex);
-			System.exit(-1);
-		}
+    private String query(StringBuilder sb, String querystr)
+            throws ParseException, IOException {
 
-		int hitsPerPage = 10;
-		TopScoreDocCollector collector = TopScoreDocCollector.create(
-						hitsPerPage, true);
-		searcher.search(q, collector);
-		ScoreDoc[] hits = collector.topDocs().scoreDocs;
+        // the "title" arg specifies the default field to use when no field is
+        // explicitly specified in the query.
+        Query q = new QueryParser(Version.LUCENE_42, "title", analyzer)
+                .parse(querystr);
+        IndexSearcher searcher = null;
+        IndexReader reader = null;
+        try {
+            reader = DirectoryReader.open(index);
+            searcher = new IndexSearcher(reader);
+        } catch (IOException ex) {
+            java.util.logging.Logger.getLogger(Search.class.getName()).log(
+                    Level.SEVERE, null, ex);
+            System.exit(-1);
+        }
 
-		// display results
-		sb.append("Found ").append(hits.length).append(" entries.<ul>");
-		for (int i = 0; i < hits.length; ++i) {
-			int docId = hits[i].doc;
-			Document d = searcher.doc(docId);
-			sb.append("<li>").append(i + 1).append(". ").append(d.get("id"))
-			.append("\t").append(d.get("title"))
-			.append("</li>");
-		}
-		sb.append("</ul>");
+        int hitsPerPage = 10;
+        TopScoreDocCollector collector = TopScoreDocCollector.create(
+                hitsPerPage, true);
+        searcher.search(q, collector);
+        ScoreDoc[] hits = collector.topDocs().scoreDocs;
 
-		// reader can only be closed when there
-		// is no need to access the documents any more.
-		reader.close();
-		return sb.toString();
-	}
+        // display results
+        sb.append("Found ").append(hits.length).append(" entries.<ul>");
+        for (int i = 0; i < hits.length; ++i) {
+            int docId = hits[i].doc;
+            Document d = searcher.doc(docId);
+            sb.append("<li>").append(i + 1).append(". ").append(d.get("id"))
+                    .append("\t").append(d.get("title"))
+                    .append("</li>");
+        }
+        sb.append("</ul>");
 
-	private Collection<IndexEntry> find(String querystr) throws ParseException,
-	IOException {
+        // reader can only be closed when there
+        // is no need to access the documents any more.
+        reader.close();
+        return sb.toString();
+    }
 
-		// the "title" arg specifies the default field to use when no field is
-		// explicitly specified in the query.
-		Query q = new QueryParser(Version.LUCENE_42, "title", analyzer)
-		.parse(querystr);
-		IndexSearcher searcher = null;
-		IndexReader reader = null;
-		try {
-			reader = DirectoryReader.open(index);
-			searcher = new IndexSearcher(reader);
-		} catch (IOException ex) {
-			java.util.logging.Logger.getLogger(Search.class.getName()).log(
-							Level.SEVERE, null, ex);
-			System.exit(-1);
-		}
+    private Collection<IndexEntry> find(String querystr) throws ParseException,
+            IOException {
 
-		int hitsPerPage = 10;
-		TopScoreDocCollector collector = TopScoreDocCollector.create(
-						hitsPerPage, true);
-		searcher.search(q, collector);
-		ScoreDoc[] hits = collector.topDocs().scoreDocs;
+        // the "title" arg specifies the default field to use when no field is
+        // explicitly specified in the query.
+        Query q = new QueryParser(Version.LUCENE_42, "title", analyzer)
+                .parse(querystr);
+        IndexSearcher searcher = null;
+        IndexReader reader = null;
+        try {
+            reader = DirectoryReader.open(index);
+            searcher = new IndexSearcher(reader);
+        } catch (IOException ex) {
+            java.util.logging.Logger.getLogger(Search.class.getName()).log(
+                    Level.SEVERE, null, ex);
+            System.exit(-1);
+        }
 
-		Collection<IndexEntry> result = new LinkedList<>();
+        int hitsPerPage = 10;
+        TopScoreDocCollector collector = TopScoreDocCollector.create(
+                hitsPerPage, true);
+        searcher.search(q, collector);
+        ScoreDoc[] hits = collector.topDocs().scoreDocs;
 
-		for (int i = 0; i < hits.length; ++i) {
-			int docId = hits[i].doc;
-			Document d = searcher.doc(docId);
-			IndexEntry e = new IndexEntry(Integer.parseInt(d.get("id")),
-							d.get("title"));
-			result.add(e);
-		}
+        Collection<IndexEntry> result = new LinkedList<>();
 
-		// reader can only be closed when there
-		// is no need to access the documents any more.
-		reader.close();
-		return result;
-	}
+        for (int i = 0; i < hits.length; ++i) {
+            int docId = hits[i].doc;
+            Document d = searcher.doc(docId);
+            IndexEntry e = new IndexEntry(Integer.parseInt(d.get("id")),
+                    d.get("title"));
+            result.add(e);
+        }
 
-	ScoreDoc[] getExistingDocsInRange(int min, int max, IndexReader reader,
-					IndexSearcher searcher) throws IOException {
-		reader = DirectoryReader.open(index);
-		searcher = new IndexSearcher(reader);
-		// The line below is dangerous - we should bound the number of entries
-		// returned
-		// so that it doesn't consume too much memory.
-		int hitsPerPage = max - min > 0 ? max - min + 1 : 1;
-		Query query = NumericRangeQuery.newIntRange("id", min, max, true, true);
-		TopDocs topDocs = searcher.search(query, hitsPerPage, new Sort(
-						new SortField("id", Type.INT)));
-		return topDocs.scoreDocs;
-	}
+        // reader can only be closed when there
+        // is no need to access the documents any more.
+        reader.close();
+        return result;
+    }
 
-	List<IndexEntry> getEntries(LinkedList<Integer> ids) {
+    ScoreDoc[] getExistingDocsInRange(int min, int max, IndexReader reader,
+            IndexSearcher searcher) throws IOException {
+        reader = DirectoryReader.open(index);
+        searcher = new IndexSearcher(reader);
+        // The line below is dangerous - we should bound the number of entries
+        // returned
+        // so that it doesn't consume too much memory.
+        int hitsPerPage = max - min > 0 ? max - min + 1 : 1;
+        Query query = NumericRangeQuery.newIntRange("id", min, max, true, true);
+        TopDocs topDocs = searcher.search(query, hitsPerPage, new Sort(
+                new SortField("id", Type.INT)));
+        return topDocs.scoreDocs;
+    }
 
-		LinkedList<IndexEntry> entries = new LinkedList<>();
-		Collections.sort(ids);
-		try {
-			IndexSearcher searcher = null;
-			IndexReader reader = null;
-			ScoreDoc[] hits = getExistingDocsInRange(ids.getFirst(),
-							Math.min(ids.getLast(), maxIndexEntry), reader,
-							searcher);
-			if (hits != null) {
-				for (ScoreDoc hit : hits) {
-					int docId = hit.doc;
-					Document d;
-					try {
-						reader = DirectoryReader.open(index);
-						searcher = new IndexSearcher(reader);
-						d = searcher.doc(docId);
-						int indexId = Integer.parseInt(d.get("id"));
-						if (ids.contains(indexId)) {
-							entries.add(new IndexEntry(indexId, d.get("title")));
-						}
-					} catch (IOException ex) {
-						java.util.logging.Logger.getLogger(
-										Search.class.getName()).log(
-														Level.SEVERE, null, ex);
-					}
-				}
-			}
-		} catch (IOException ex) {
-			Logger.getLogger(Search.class.getName())
-			.log(Level.SEVERE, null, ex);
-		}
-		return entries;
-	}
+    List<IndexEntry> getEntries(LinkedList<Integer> ids) {
 
-	Handler<CyclonSample>	handlerCyclonSample   = new Handler<CyclonSample>() {
-		@Override
-		public void handle(
-						CyclonSample event) {
-		}
-	};
-	// -------------------------------------------------------------------
-	Handler<AddIndexText>	handlerAddIndexText   = new Handler<AddIndexText>() {
-		@Override
-		public void handle(
-						AddIndexText event) {
+        LinkedList<IndexEntry> entries = new LinkedList<>();
+        Collections.sort(ids);
+        try {
+            IndexSearcher searcher = null;
+            IndexReader reader = null;
+            ScoreDoc[] hits = getExistingDocsInRange(ids.getFirst(),
+                    Math.min(ids.getLast(), maxIndexEntry), reader,
+                    searcher);
+            if (hits != null) {
+                for (ScoreDoc hit : hits) {
+                    int docId = hit.doc;
+                    Document d;
+                    try {
+                        reader = DirectoryReader.open(index);
+                        searcher = new IndexSearcher(reader);
+                        d = searcher.doc(docId);
+                        int indexId = Integer.parseInt(d.get("id"));
+                        if (ids.contains(indexId)) {
+                            entries.add(new IndexEntry(indexId, d.get("title")));
+                        }
+                    } catch (IOException ex) {
+                        java.util.logging.Logger.getLogger(
+                                Search.class.getName()).log(
+                                Level.SEVERE, null, ex);
+                    }
+                }
+            }
+        } catch (IOException ex) {
+            Logger.getLogger(Search.class.getName())
+                    .log(Level.SEVERE, null, ex);
+        }
+        return entries;
+    }
+    Handler<CyclonSample> handlerCyclonSample = new Handler<CyclonSample>() {
+        @Override
+        public void handle(CyclonSample event) {
+        }
+    };
+    // -------------------------------------------------------------------
+    Handler<AddIndexText> handlerAddIndexText = new Handler<AddIndexText>() {
+        @Override
+        public void handle(
+                AddIndexText event) {
 
-			synchronized (sync) {
-				logger.log("Adding index entry: "
-								+ event.getText()
-								+ "; sending request to leader "
-								+ leader);
+            synchronized (sync) {
+                logger.log("Adding index entry: "
+                        + event.getText()
+                        + "; sending request to leader "
+                        + leader);
 
-				Insert.Request rq = new Insert.Request(
-								self,
-								leader,
-								event.getText());
-				requests.put(rq.getId(),
-								rq);
-				if (leader != null) {
-					trigger(rq,
-									networkPort);
-				}
-			}
-		}
-	};
-	Handler<TManSample>	  handlerTManSample	 = new Handler<TManSample>() {
+                Insert.Request rq = new Insert.Request(
+                        self,
+                        leader,
+                        event.getText());
+                requests.put(rq.getId(),
+                        rq);
+                if (leader != null) {
+                    trigger(rq,
+                            networkPort);
+                }
+            }
+        }
+    };
+    Handler<TManSample> handlerTManSample = new Handler<TManSample>() {
+        @Override
+        public void handle(
+                TManSample event) {
+            // Naively accept
+            // everything.
+            synchronized (sync) {
+                leader = event.getLeader();
+                allNeighbours = event
+                        .getAllNeighbours();
+                gradientAbove = event
+                        .getHigherNeighbours();
+                gradientBelow = event
+                        .getLowerNeighbours();
+                routes = event.getRoutes();
+            }
+        }
+    };
+    Handler<SearchSchedule> handlerSchedule = new Handler<SearchSchedule>() {
+        @Override
+        public void handle(
+                SearchSchedule event) {
 
-		@Override
-		public void handle(
-						TManSample event) {
-			// Naively accept
-			// everything.
-			synchronized (sync) {
-				leader = event.getLeader();
-				allNeighbours = event
-								.getAllNeighbours();
-				gradientAbove = event
-								.getHigherNeighbours();
-				gradientBelow = event
-								.getLowerNeighbours();
-				routes = event.getRoutes();
-			}
-		}
-	};
-	Handler<SearchSchedule>  handlerSchedule	   = new Handler<SearchSchedule>() {
-		@Override
-		public void handle(
-						SearchSchedule event) {
+            synchronized (sync) {
+                for (Address address : allNeighbours) {
+                    trigger(new Push.Offer(
+                            self,
+                            address,
+                            maxIndexEntry),
+                            networkPort);
+                }
 
-			synchronized (sync) {
-				for (Address address : allNeighbours) {
-					trigger(new Push.Offer(
-									self,
-									address,
-									maxIndexEntry),
-									networkPort);
-				}
+                if (leader != null) {
+                    for (Insert.Request rq : requests
+                            .values()) {
+                        logger.log("Trying to insert "
+                                + rq.getTitle()
+                                + " again...");
+                        rq.setDestination(leader);
+                        trigger(rq,
+                                networkPort);
+                    }
+                }
+            }
+        }
+    };
+    Handler<SearchTimeout> handlerSearchTimeout = new Handler<SearchTimeout>() {
+        @Override
+        public void handle(SearchTimeout e) {
+            synchronized (sync) {
+                SearchRequestInfo sri = pendingSearches.get(e.getId());
+                if (sri != null) {
+                    String html = searchPageHtml(sri.getAllResults());
+                    WebResponse r = new WebResponse(html, sri.getWeb(), 1, 1);
+                    trigger(r, webPort);
+                    pendingSearches.remove(e.getId());
+                }
+            }
+        }
+    };
+    Handler<Push.Offer> handlerPushOffer = new Handler<Push.Offer>() {
+        @Override
+        public void handle(
+                Offer event) {
+            synchronized (sync) {
+                Collection<Integer> missingIds = getMissingIds(event
+                        .getEntryId());
+                if (!missingIds.isEmpty()) {
+                    trigger(new Push.Accept(
+                            event,
+                            missingIds),
+                            networkPort);
+                }
+            }
+        }
+    };
+    Handler<Push.Accept> handlerPushAccept = new Handler<Push.Accept>() {
+        @Override
+        public void handle(
+                Accept event) {
 
-				if (leader != null) {
-					for (Insert.Request rq : requests
-									.values()) {
-						logger.log("Trying to insert "
-										+ rq.getTitle()
-										+ " again...");
-						rq.setDestination(leader);
-						trigger(rq,
-										networkPort);
-					}
-				}
-			}
+            synchronized (sync) {
+                LinkedList<Integer> missingIds = new LinkedList<>(
+                        event.getMissingIds());
+                List<IndexEntry> entries = getEntries(missingIds);
+                if (!entries.isEmpty()) {
+                    trigger(new Push.Payload(
+                            event,
+                            entries),
+                            networkPort);
+                }
 
-			// Check if we have
-			// something new to
-			// push
-			/*
-			 * // pick a random
-			 * neighbour to ask
-			 * for index updates
-			 * from. // You can
-			 * change this policy
-			 * if you want to. //
-			 * Maybe a gradient
-			 * neighbour who is
-			 * closer to the
-			 * leader? if
-			 * (neighbours
-			 * .isEmpty()) {
-			 * return; } Address
-			 * dest =
-			 * neighbours.get
-			 * (random
-			 * .nextInt(neighbours
-			 * .size()));
-			 * 
-			 * // find all
-			 * missing index
-			 * entries (ranges)
-			 * between
-			 * lastMissingIndexValue
-			 * // and the
-			 * maxIndexValue
-			 * List<Range>
-			 * missingIndexEntries
-			 * =
-			 * getMissingRanges(
-			 * );
-			 * 
-			 * // Send a
-			 * MissingIndexEntries
-			 * .Request for the
-			 * missing index
-			 * entries to dest
-			 * MissingIndexEntries
-			 * .Request req = new
-			 * MissingIndexEntries
-			 * .Request(self,
-			 * dest,
-			 * missingIndexEntries
-			 * ); trigger(req,
-			 * networkPort);
-			 */
-		}
-	};
-	Handler<Push.Offer>	  handlerPushOffer	  = new Handler<Push.Offer>() {
-		@Override
-		public void handle(
-						Offer event) {
-			synchronized (sync) {
-				Collection<Integer> missingIds = getMissingIds(event
-								.getEntryId());
-				if (!missingIds.isEmpty()) {
-					trigger(new Push.Accept(
-									event,
-									missingIds),
-									networkPort);
-				}
-			}
-		}
-	};
-	Handler<Push.Accept>	 handlerPushAccept	 = new Handler<Push.Accept>() {
-		@Override
-		public void handle(
-						Accept event) {
+                String id = event
+                        .getId();
 
-			synchronized (sync) {
-				LinkedList<Integer> missingIds = new LinkedList<>(
-								event.getMissingIds());
-				List<IndexEntry> entries = getEntries(missingIds);
-				if (!entries.isEmpty()) {
-					trigger(new Push.Payload(
-									event,
-									entries),
-									networkPort);
-				}
 
-				String id = event
-								.getId();
+                Insert.Request request = waiting
+                        .get(id);
+                if (request != null
+                        && missingIds.contains(request
+                        .getEntryId())) {
 
-				// Protection for
-				// if the leader
-				// goes down.
-				Insert.Request request = waiting
-								.get(id);
-				if (request != null
-								&& missingIds.contains(request
-												.getEntryId())) {
-					// If this
-					// doesn't
-					// happen,
-					// the node
-					// that
-					// requested
-					// the insert
-					// will keep
-					// petitioning
-					// the
-					// leader.
-					trigger(new Insert.Response(
-									request,
-									true),
-									networkPort);
-					// Remove
-					// this event
-					// from the
-					// queue so
-					// we don't
-					// send
-					// another
-					// response.
-					waiting.remove(id);
-				}
-			}
-		}
-	};
-	Handler<Push.Payload>	handlerPushPayload	= new Handler<Push.Payload>() {
-		@Override
-		public void handle(
-						Payload event) {
-			// Make sure the
-			// entries are sorted
-			// logger.log("Updating to "
-			// + (maxIndexEntry +
-			// event.getEntries().size()));
-			synchronized (sync) {
-				boolean log = false;
-				for (IndexEntry e : event
-								.getEntries()) {
-					if (addEntry(e.getText(),
-									e.getIndexId())) {
-						log = true;
-					}
-				}
-				if (log) {
-					logger.log("I now have "
-									+ existingIds.size()
-									+ " entries in the index");
-				}
-			}
-		}
-	};
-	Handler<Insert.Request>  handlerInsertRequest  = new Handler<Insert.Request>() {
-		@Override
-		public void handle(
-						Insert.Request event) {
+                    trigger(new Insert.Response(
+                            request,
+                            true),
+                            networkPort);
 
-			synchronized (sync) {
-				// If for some
-				// reason this
-				// node gets this
-				// request
-				// without being
-				// the leader,
-				// just ignore
-				// it.
-				if (leader != self) {
-					return;
-				}
+                    waiting.remove(id);
+                }
+            }
+        }
+    };
+    Handler<Push.Payload> handlerPushPayload = new Handler<Push.Payload>() {
+        @Override
+        public void handle(
+                Payload event) {
+            // Make sure the
+            // entries are sorted
+            // logger.log("Updating to "
+            // + (maxIndexEntry +
+            // event.getEntries().size()));
+            synchronized (sync) {
+                boolean log = false;
+                for (IndexEntry e : event
+                        .getEntries()) {
+                    if (addEntry(e.getText(),
+                            e.getIndexId())) {
+                        log = true;
+                    }
+                }
+                if (log) {
+                    logger.log("I now have "
+                            + existingIds.size()
+                            + " entries in the index");
+                }
+            }
+        }
+    };
+    Handler<Insert.Request> handlerInsertRequest = new Handler<Insert.Request>() {
+        @Override
+        public void handle(
+                Insert.Request event) {
 
-				if (!waiting.containsKey(event
-								.getId())) {
-					event.setEntryId(maxIndexEntry + 1);
+            synchronized (sync) {
+                if (leader != self) {
+                    return;
+                }
 
-					if (!addEntry(event
-									.getTitle(),
-									event.getEntryId())) {
-						trigger(new Insert.Response(
-										event,
-										false),
-										networkPort);
-						return;
-					}
+                if (!waiting.containsKey(event
+                        .getId())) {
+                    event.setEntryId(maxIndexEntry + 1);
 
-					logger.log(event.getSource()
-									+ " requested to add "
-									+ event.getTitle()
-									+ " | assigned "
-									+ event.getEntryId());
-					waiting.put(event
-									.getId(),
-									event);
-				} else {
-				}
+                    if (!addEntry(event
+                            .getTitle(),
+                            event.getEntryId())) {
+                        trigger(new Insert.Response(
+                                event,
+                                false),
+                                networkPort);
+                        return;
+                    }
 
-				for (Address address : gradientBelow) {
-					trigger(new Push.Offer(
-									self,
-									address,
-									event.getEntryId(),
-									event.getId()),
-									networkPort);
-				}
-			}
-		}
-	};
-	Handler<Insert.Response> handlerInsertResponse = new Handler<Insert.Response>() {
-		@Override
-		public void handle(
-						Insert.Response event) {
-			synchronized (sync) {
-				Insert.Request request = requests
-								.get(event.getRequestId());
-				if (request == null) {
-					return;
-				}
-				if (event.isSuccess()) {
-					requests.remove(event
-									.getRequestId());
-					addEntry(request.getTitle(),
-									event.getEntryId());
-					logger.log("Finished adding an entry: "
-									+ event.getEntryId()
-									+ " "
-									+ request.getTitle());
-				} else {
-					logger.log("Failed inserting "
-									+ request.getTitle());
-				}
-			}
-		}
-	};
+                    logger.log(event.getSource()
+                            + " requested to add "
+                            + event.getTitle()
+                            + " | assigned "
+                            + event.getEntryId());
+                    waiting.put(event
+                            .getId(),
+                            event);
+                } else {
+                }
 
-	Handler<Find.Request>	handlerFindRequest	= new Handler<Find.Request>() {
-		@Override
-		public void handle(Request event) {
-			synchronized(sync)
-			{
-				logger.log("Received search request for " + event.getQuery());
-				try {
-					Collection<IndexEntry> result = find(event.getQuery());
-					Find.Response response = new Find.Response(event,result);
-					trigger(response, networkPort);
-				} catch (Exception e) {
-					// If anything
-					// goes wrong,
-					// just whistle
-					// and go on as
-					// usual
-					e.printStackTrace();
-				}
-			}
-		}
-	};
+                for (Address address : gradientBelow) {
+                    trigger(new Push.Offer(
+                            self,
+                            address,
+                            event.getEntryId(),
+                            event.getId()),
+                            networkPort);
+                }
+            }
+        }
+    };
+    Handler<Insert.Response> handlerInsertResponse = new Handler<Insert.Response>() {
+        @Override
+        public void handle(
+                Insert.Response event) {
+            synchronized (sync) {
+                Insert.Request request = requests
+                        .get(event.getRequestId());
+                if (request == null) {
+                    return;
+                }
+                if (event.isSuccess()) {
+                    requests.remove(event
+                            .getRequestId());
+                    addEntry(request.getTitle(),
+                            event.getEntryId());
+                    logger.log("Finished adding an entry: "
+                            + event.getEntryId()
+                            + " "
+                            + request.getTitle());
+                } else {
+                    logger.log("Failed inserting "
+                            + request.getTitle());
+                }
+            }
+        }
+    };
+    Handler<Find.Request> handlerFindRequest = new Handler<Find.Request>() {
+        @Override
+        public void handle(Request event) {
+            synchronized (sync) {
+                logger.log("Received search request for " + event.getQuery());
+                try {
+                    Collection<IndexEntry> result = find(event.getQuery());
+                    Find.Response response = new Find.Response(event, result);
+                    trigger(response, networkPort);
+                } catch (Exception e) {
+                    // If anything
+                    // goes wrong,
+                    // just whistle
+                    // and go on as
+                    // usual
+                    e.printStackTrace();
+                }
+            }
+        }
+    };
+    Handler<Find.Response> handlerFindResponse = new Handler<Find.Response>() {
+        @Override
+        public void handle(Response event) {
+            synchronized (sync) {
+                logger.log("Got response from " + event.getSource().getId());
+                UUID id = event.getId();
+                SearchRequestInfo sfi = pendingSearches.get(id);
+                if (sfi == null) {
+                    return;
+                }
 
-	Handler<Find.Response>   handlerFindResponse   = new Handler<Find.Response>() {
-		@Override
-		public void handle(Response event) {
-			synchronized(sync)
-			{
-				logger.log("Got response from " + event.getSource().getId());
-				UUID id = event.getId();
-				SearchRequestInfo sfi = pendingSearches.get(id);
-				if (sfi == null) {
-					return;
-				}
-				sfi.addResult(event
-								.getSource(),
-								event.getResult());
-				if (sfi.receivedAll()) {
-					String html = searchPageHtml(sfi.getAllResults());
-					WebResponse r = new WebResponse(html, sfi.getWeb(), 1, 1);
-					trigger(r, webPort);
-				}
-			}
-		}
-	};
-
+                sfi.addResult(event.getSource(), event.getResult());
+                if (sfi.receivedAll()) {
+                    String html = searchPageHtml(sfi.getAllResults());
+                    WebResponse r = new WebResponse(html, sfi.getWeb(), 1, 1);
+                    trigger(r, webPort);
+                    pendingSearches.remove(id);
+                }
+            }
+        }
+    };
 }
