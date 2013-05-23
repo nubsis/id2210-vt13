@@ -1,8 +1,10 @@
 package search.system.peer.search;
 
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 import se.sics.kompics.address.Address;
@@ -11,32 +13,36 @@ import se.sics.kompics.web.WebRequest;
 public class SearchRequestInfo {
 	private final WebRequest web;
 	private final Map<Address, Collection<IndexEntry>> results;
+	private final Set<Address> pending;
 
 	public SearchRequestInfo(WebRequest req)
 	{
 		web = req;
 		results = new ConcurrentHashMap<>();
+		pending = new HashSet<>();
 	}
 
-	public void addPartitionRequestId(Address address)
+	public synchronized void addPartitionRequestId(Address address)
 	{
-		results.put(address, null);
+		results.put(address, new LinkedList<IndexEntry>());
+		pending.add(address);
 	}
 
-	public void addResult(Address address, Collection<IndexEntry> moar)
+	public synchronized void addResult(Address address, Collection<IndexEntry> moar)
 	{
 		if(results.containsKey(address))
 		{
 			results.put(address, moar);
+			pending.remove(address);
 		}
 	}
 
-	public boolean receivedAll()
+	public synchronized boolean receivedAll()
 	{
-		return !results.containsValue(null);
+		return pending.isEmpty();
 	}
 
-	public Collection<IndexEntry> getAllResults() {
+	public synchronized Collection<IndexEntry> getAllResults() {
 		LinkedList<IndexEntry> result = new LinkedList<>();
 		for(Collection<IndexEntry> entries : results.values())
 		{

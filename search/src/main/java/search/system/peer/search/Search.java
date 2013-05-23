@@ -66,6 +66,7 @@ import tman.system.peer.tman.TManSample;
 import tman.system.peer.tman.TManSamplePort;
 
 import common.configuration.SearchConfiguration;
+import common.configuration.TManConfiguration;
 
 import cyclon.system.peer.cyclon.CyclonSample;
 import cyclon.system.peer.cyclon.CyclonSamplePort;
@@ -155,9 +156,7 @@ public final class Search extends ComponentDefinition {
 		public void handle(SearchInit init) {
 			synchronized (sync) {
 				self = init.getSelf();
-				logger = new common.Logger.Instance(
-								"Search."
-												+ self);
+				logger = new common.Logger.Instance(self + "[" + self.getId() % TManConfiguration.PARTITION_COUNT + "]");
 				searchConfiguration = init
 								.getConfiguration();
 
@@ -218,6 +217,7 @@ public final class Search extends ComponentDefinition {
 	};
 
 	private void triggerSearch(WebRequest request, String query) {
+		logger.log("Starting search for " + query);
 		SearchRequestInfo sfi = new SearchRequestInfo(request);
 		UUID id = UUID.randomUUID();
 		pendingSearches.put(id, sfi);
@@ -761,23 +761,22 @@ public final class Search extends ComponentDefinition {
 
 	Handler<Find.Request>	handlerFindRequest	= new Handler<Find.Request>() {
 		@Override
-		public void handle(
-						Request event) {
-			try {
-				Collection<IndexEntry> result = find(event
-								.getQuery());
-				Find.Response response = new Find.Response(
-								event,
-								result);
-				trigger(response,
-								networkPort);
-			} catch (Exception e) {
-				// If anything
-				// goes wrong,
-				// just whistle
-				// and go on as
-				// usual
-				e.printStackTrace();
+		public void handle(Request event) {
+			synchronized(sync)
+			{
+				logger.log("Received search request for " + event.getQuery());
+				try {
+					Collection<IndexEntry> result = find(event.getQuery());
+					Find.Response response = new Find.Response(event,result);
+					trigger(response, networkPort);
+				} catch (Exception e) {
+					// If anything
+					// goes wrong,
+					// just whistle
+					// and go on as
+					// usual
+					e.printStackTrace();
+				}
 			}
 		}
 	};
@@ -787,6 +786,7 @@ public final class Search extends ComponentDefinition {
 		public void handle(Response event) {
 			synchronized(sync)
 			{
+				logger.log("Got response from " + event.getSource().getId());
 				UUID id = event.getId();
 				SearchRequestInfo sfi = pendingSearches.get(id);
 				if (sfi == null) {
