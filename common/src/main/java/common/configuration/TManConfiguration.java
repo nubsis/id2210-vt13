@@ -10,6 +10,7 @@ import java.util.Properties;
 public final class TManConfiguration {
 
     public static final int GRADIENT_DEPTH = 5;
+    public static final int PARTITION_COUNT = 3;
     
     private final long period;
     private final long seed;

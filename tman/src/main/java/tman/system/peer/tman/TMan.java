@@ -15,6 +15,8 @@ import se.sics.kompics.timer.Timeout;
 import se.sics.kompics.timer.Timer;
 
 import cyclon.system.peer.cyclon.CyclonSamplePort;
+import java.util.HashMap;
+import java.util.Map;
 import tman.system.peer.tman.messages.Ping;
 
 public final class TMan extends ComponentDefinition {
@@ -34,6 +36,7 @@ public final class TMan extends ComponentDefinition {
     Positive<Network> networkPort = positive(Network.class);
     Positive<Timer> timerPort = positive(Timer.class);
     private common.Logger.Instance logger;
+    private final Map<Integer, Address> partitionRoutes = new HashMap<>();
     private final ElectionProtocol election = new ElectionProtocol(this);
     private final Gradient gradient = new Gradient(this);
     private Address self;
@@ -108,6 +111,7 @@ public final class TMan extends ComponentDefinition {
             trigger(new TManSample(
                     gradient.getLower(),
                     gradient.getHigher(),
+                    partitionRoutes,
                     election.getLeader()),
                     tmanPort);
         }
