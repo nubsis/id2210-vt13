@@ -101,7 +101,7 @@ public final class SearchSimulator extends ComponentDefinition {
 
     String randomText() {
 	StringBuilder sb = new StringBuilder();
-	int clauses = Math.max(1, r.nextInt(3));
+	int clauses = Math.max(1, r.nextInt(4));
 	for (int i = 0; i < clauses; i++) {
 	    sb.append(articles[r.nextInt(articles.length)]);
 	    sb.append(subjects[r.nextInt(subjects.length)]);
