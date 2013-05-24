@@ -87,6 +87,19 @@ public final class Search extends ComponentDefinition {
 	}
     }
 
+    public static class SearchTimeout extends Timeout {
+
+	private final UUID id;
+
+	public SearchTimeout(UUID id, ScheduleTimeout timeout) {
+	    super(timeout);
+	    this.id = id;
+	}
+
+	public UUID getId() {
+	    return id;
+	}
+    }
     private common.Logger.Instance logger;
     private final Positive<IndexPort> indexPort = positive(IndexPort.class);
     private final Positive<Network> networkPort = positive(Network.class);
@@ -101,7 +114,7 @@ public final class Search extends ComponentDefinition {
     private Collection<Address> allNeighbours = new LinkedList<>();
     private Collection<Address> gradientAbove = new LinkedList<>();
     private Collection<Address> gradientBelow = new LinkedList<>();
-    private Map<Integer, Address> routes = new HashMap<>(8);
+    private Map<Integer, Address> routes = new HashMap<>(TManConfiguration.PARTITION_COUNT);
     private final Object sync = new Object();
     /**
      * The requests awaiting confirmation from the leader key - source|uuid
@@ -121,7 +134,8 @@ public final class Search extends ComponentDefinition {
 	    Version.LUCENE_42);
     private final Directory index = new RAMDirectory();
     private final IndexWriterConfig config = new IndexWriterConfig(
-	    Version.LUCENE_42, analyzer);
+	    Version.LUCENE_42,
+	    analyzer);
     // //////////////
     int maxIndexEntry = 0;
 
@@ -133,6 +147,7 @@ public final class Search extends ComponentDefinition {
 	subscribe(handlerCyclonSample, cyclonSamplePort);
 	subscribe(handlerAddIndexText, indexPort);
 	subscribe(handlerSchedule, timerPort);
+	subscribe(handlerSearchTimeout, timerPort);
 	subscribe(handlerTManSample, tmanPort);
 
 	subscribe(handlerInsertRequest, networkPort);
@@ -140,29 +155,36 @@ public final class Search extends ComponentDefinition {
 	subscribe(handlerPushAccept, networkPort);
 	subscribe(handlerPushOffer, networkPort);
 	subscribe(handlerPushPayload, networkPort);
-    }
+	subscribe(handlerFindRequest, networkPort);
+	subscribe(handlerFindResponse, networkPort);
 
+
+    }
     // -------------------------------------------------------------------
     Handler<SearchInit> handleInit = new Handler<SearchInit>() {
 	@Override
 	public void handle(SearchInit init) {
 	    synchronized (sync) {
 		self = init.getSelf();
-		logger = new common.Logger.Instance(self + "[" + self.getId()
-			% TManConfiguration.PARTITION_COUNT + "]");
-		searchConfiguration = init.getConfiguration();
+		logger = new common.Logger.Instance(self + "[" + self.getId() % TManConfiguration.PARTITION_COUNT + "]");
+		searchConfiguration = init
+			.getConfiguration();
 
 		long period = searchConfiguration.getPeriod();
 		SchedulePeriodicTimeout rst = new SchedulePeriodicTimeout(
-			period, period);
+			period,
+			period);
 		rst.setTimeoutEvent(new SearchSchedule(rst));
+
 		trigger(rst, timerPort);
 
 		// TODO super ugly
 		// workaround...
 		IndexWriter writer;
 		try {
-		    writer = new IndexWriter(index, config);
+		    writer = new IndexWriter(
+			    index,
+			    config);
 		    writer.commit();
 		    writer.close();
 		} catch (IOException e) {
@@ -186,7 +208,8 @@ public final class Search extends ComponentDefinition {
 		    if (args[0].compareToIgnoreCase("search") == 0) {
 			triggerSearch(event, args[1]);
 			return;
-		    } else if (args[0].compareToIgnoreCase("add") == 0) {
+		    } else if (args[0]
+			    .compareToIgnoreCase("add") == 0) {
 			response = addEntryHtml(args[1]);
 		    } else {
 			throw new Exception();
@@ -214,6 +237,10 @@ public final class Search extends ComponentDefinition {
 	sfi.addPartitionRequestId(self);
 	// Send to switch thread
 	trigger(r, networkPort);
+
+	ScheduleTimeout to = new ScheduleTimeout(3000);
+	to.setTimeoutEvent(new SearchTimeout(id, to));
+	trigger(to, timerPort);
     }
 
     private String searchPageHtml(Collection<IndexEntry> entries) {
@@ -335,7 +362,8 @@ public final class Search extends ComponentDefinition {
 	    int docId = hits[i].doc;
 	    Document d = searcher.doc(docId);
 	    sb.append("<li>").append(i + 1).append(". ").append(d.get("id"))
-	    .append("\t").append(d.get("title")).append("</li>");
+	    .append("\t").append(d.get("title"))
+	    .append("</li>");
 	}
 	sb.append("</ul>");
 
@@ -407,7 +435,8 @@ public final class Search extends ComponentDefinition {
 	    IndexSearcher searcher = null;
 	    IndexReader reader = null;
 	    ScoreDoc[] hits = getExistingDocsInRange(ids.getFirst(),
-		    Math.min(ids.getLast(), maxIndexEntry), reader, searcher);
+		    Math.min(ids.getLast(), maxIndexEntry), reader,
+		    searcher);
 	    if (hits != null) {
 		for (ScoreDoc hit : hits) {
 		    int docId = hit.doc;
@@ -422,8 +451,8 @@ public final class Search extends ComponentDefinition {
 			}
 		    } catch (IOException ex) {
 			java.util.logging.Logger.getLogger(
-				Search.class.getName()).log(Level.SEVERE, null,
-					ex);
+				Search.class.getName()).log(
+					Level.SEVERE, null, ex);
 		    }
 		}
 	    }
@@ -433,7 +462,6 @@ public final class Search extends ComponentDefinition {
 	}
 	return entries;
     }
-
     Handler<CyclonSample> handlerCyclonSample = new Handler<CyclonSample>() {
 	@Override
 	public void handle(CyclonSample event) {
@@ -513,43 +541,44 @@ public final class Search extends ComponentDefinition {
     };
     Handler<SearchSchedule> handlerSchedule = new Handler<SearchSchedule>() {
 	@Override
-	public void handle(SearchSchedule event) {
+	public void handle(
+		SearchSchedule event) {
 
 	    synchronized (sync) {
 		for (Address address : allNeighbours) {
-		    trigger(new Push.Offer(self, address, maxIndexEntry),
+		    trigger(new Push.Offer(
+			    self,
+			    address,
+			    maxIndexEntry),
 			    networkPort);
 		}
 
 		if (leader != null) {
-		    for (Insert.Request rq : requests.values()) {
-			logger.log("Trying to insert " + rq.getTitle()
+		    for (Insert.Request rq : requests
+			    .values()) {
+			logger.log("Trying to insert "
+				+ rq.getTitle()
 				+ " again...");
 			rq.setDestination(leader);
-			trigger(rq, networkPort);
+			trigger(rq,
+				networkPort);
 		    }
 		}
 	    }
-
-	    // Check if we have
-	    // something new to
-	    // push
-	    /*
-	     * // pick a random neighbour to ask for index updates from. // You
-	     * can change this policy if you want to. // Maybe a gradient
-	     * neighbour who is closer to the leader? if (neighbours .isEmpty())
-	     * { return; } Address dest = neighbours.get (random
-	     * .nextInt(neighbours .size()));
-	     * 
-	     * // find all missing index entries (ranges) between
-	     * lastMissingIndexValue // and the maxIndexValue List<Range>
-	     * missingIndexEntries = getMissingRanges( );
-	     * 
-	     * // Send a MissingIndexEntries .Request for the missing index
-	     * entries to dest MissingIndexEntries .Request req = new
-	     * MissingIndexEntries .Request(self, dest, missingIndexEntries );
-	     * trigger(req, networkPort);
-	     */
+	}
+    };
+    Handler<SearchTimeout> handlerSearchTimeout = new Handler<SearchTimeout>() {
+	@Override
+	public void handle(SearchTimeout e) {
+	    synchronized (sync) {
+		SearchRequestInfo sri = pendingSearches.get(e.getId());
+		if (sri != null) {
+		    String html = searchPageHtml(sri.getAllResults());
+		    WebResponse r = new WebResponse(html, sri.getWeb(), 1, 1);
+		    trigger(r, webPort);
+		    pendingSearches.remove(e.getId());
+		}
+	    }
 	}
     };
     Handler<Push.Offer> handlerPushOffer = new Handler<Push.Offer>() {
@@ -580,16 +609,16 @@ public final class Search extends ComponentDefinition {
 
 		// Protection for if the leader goes down.
 		Insert.Request request = waiting.get(id);
-		if (request != null
-			&& missingIds.contains(request.getEntryId())) {
-		    // If this doesn't happen, the node that requested the
-		    // insert will keep
-		    // petitioning the leader.
-		    trigger(new Insert.Response(request, true), networkPort);
-		    // Remove this event from the queue so we don't
-		    // send another response.
-		    waiting.remove(id);
-		}
+			if (request != null
+				&& missingIds.contains(request.getEntryId())) {
+			    // If this doesn't happen, the node that requested the
+			    // insert will keep
+			    // petitioning the leader.
+			    trigger(new Insert.Response(request, true), networkPort);
+			    // Remove this event from the queue so we don't
+			    // send another response.
+			    waiting.remove(id);
+			}
 	    }
 	}
     };
@@ -723,7 +752,6 @@ public final class Search extends ComponentDefinition {
 	    }
 	}
     };
-
     Handler<Find.Response> handlerFindResponse = new Handler<Find.Response>() {
 	@Override
 	public void handle(Find.Response event) {
@@ -734,11 +762,13 @@ public final class Search extends ComponentDefinition {
 		if (sfi == null) {
 		    return;
 		}
+
 		sfi.addResult(event.getSource(), event.getResult());
 		if (sfi.receivedAll()) {
 		    String html = searchPageHtml(sfi.getAllResults());
 		    WebResponse r = new WebResponse(html, sfi.getWeb(), 1, 1);
 		    trigger(r, webPort);
+		    pendingSearches.remove(id);
 		}
 	    }
 	}
