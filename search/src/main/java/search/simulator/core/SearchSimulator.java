@@ -3,6 +3,7 @@ package search.simulator.core;
 import java.net.InetAddress;
 import java.util.HashMap;
 import java.util.Random;
+import java.util.UUID;
 
 import se.sics.ipasdistances.AsIpGenerator;
 import se.sics.kompics.ChannelFilter;
@@ -109,6 +110,7 @@ public final class SearchSimulator extends ComponentDefinition {
 	    sb.append(objects[r.nextInt(objects.length)]);
 	    sb.append(". ");
 	}
+	sb.append(UUID.randomUUID());
 	return sb.toString();
     }
 
