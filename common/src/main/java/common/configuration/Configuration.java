@@ -27,13 +27,11 @@ public class Configuration {
     final long seed;
     BootstrapConfiguration bootConfiguration = new BootstrapConfiguration(bootServerAddress, 60000, 4000, 3, 30000, webPort, webPort);
     CyclonConfiguration cyclonConfiguration;
-    TManConfiguration tmanConfiguration;
     SearchConfiguration searchConfiguration;
 
     public Configuration(long seed) throws IOException {
         this.seed = seed;
         searchConfiguration = new SearchConfiguration(seed);
-        tmanConfiguration = new TManConfiguration(seed, 1000, 0.8);
         cyclonConfiguration = new CyclonConfiguration(seed, 5, 10, 1000, 500000,
                 (long) (Integer.MAX_VALUE - Integer.MIN_VALUE), 20);
 
@@ -44,10 +42,6 @@ public class Configuration {
         c = File.createTempFile("cyclon.", ".conf").getAbsolutePath();
         cyclonConfiguration.store(c);
         System.setProperty("cyclon.configuration", c);
-
-        c = File.createTempFile("tman.", ".conf").getAbsolutePath();
-        tmanConfiguration.store(c);
-        System.setProperty("tman.configuration", c);
 
         c = File.createTempFile("search.", ".conf").getAbsolutePath();
         searchConfiguration.store(c);

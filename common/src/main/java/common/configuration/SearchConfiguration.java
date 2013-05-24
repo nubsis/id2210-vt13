@@ -10,6 +10,9 @@ import java.util.Properties;
 
 public final class SearchConfiguration {
 
+    public static final int SEARCH_REQUEST_TIMEOUT = 3000;
+    public static final int SEARCH_SCHEDULE_TIMEOUT = 5000;
+    
     private final long period;
     private final int numPartitions;
     private final int maxNumRoutingEntries;

@@ -103,7 +103,9 @@ public final class TMan extends ComponentDefinition {
             partitionId = self.getId() % TManConfiguration.PARTITION_COUNT;
             logger = new common.Logger.Instance(self + "[" + partitionId + "]");
 
-            SchedulePeriodicTimeout rst = new SchedulePeriodicTimeout(10000, 5000);
+            SchedulePeriodicTimeout rst = new SchedulePeriodicTimeout(
+                    TManConfiguration.SCHEDULE_PERIOD * 2,
+                    TManConfiguration.SCHEDULE_PERIOD);
 
             rst.setTimeoutEvent(new TManSchedule(rst));
             trigger(rst, timerPort);
