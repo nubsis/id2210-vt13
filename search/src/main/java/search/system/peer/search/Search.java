@@ -682,7 +682,7 @@ public final class Search extends ComponentDefinition {
 		}
 		if (event.isSuccess()) {
 		    requests.remove(event.getRequestId());
-		    addEntry(request.getTitle(), event.getEntryId());
+		    //addEntry(request.getTitle(), event.getEntryId());
 		    logger.log("Finished adding an entry: "
 			    + event.getEntryId() + " " + request.getTitle());
 		} else {

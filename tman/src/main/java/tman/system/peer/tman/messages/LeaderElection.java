@@ -15,43 +15,57 @@ public class LeaderElection {
 
     public static class VoteRequest extends Message {
 
-        private final Address candidate;
+	private final Address candidate;
 
-        public VoteRequest(Address src, Address dst) {
-            super(src, dst);
-            candidate = src;
-        }
+	public VoteRequest(Address src, Address dst) {
+	    super(src, dst);
+	    candidate = src;
+	}
 
-        public Address getCandidate() {
-            return candidate;
-        }
+	public Address getCandidate() {
+	    return candidate;
+	}
     };
 
     public static class VoteResponse extends Message {
 
-        private final boolean accepted;
+	private final boolean accepted;
 
-        public VoteResponse(Address src, Address dst, boolean accepted) {
-            super(src, dst);
-            this.accepted = accepted;
-        }
+	public VoteResponse(Address src, Address dst, boolean accepted) {
+	    super(src, dst);
+	    this.accepted = accepted;
+	}
 
-        public boolean isAccepted() {
-            return accepted;
-        }
+	public boolean isAccepted() {
+	    return accepted;
+	}
     }
 
     public static class Announcement extends Message {
 
-        private final Address leader;
+	private final Address leader;
 
-        public Announcement(Address src, Address dst, Address leader) {
-            super(src, dst);
-            this.leader = leader;
-        }
+	public Announcement(Address src, Address dst, Address leader) {
+	    super(src, dst);
+	    this.leader = leader;
+	}
 
-        public Address getLeader() {
-            return leader;
-        }
+	public Address getLeader() {
+	    return leader;
+	}
+    }
+
+    public static class Refute extends Message {
+	private final Address leader;
+
+	public Refute(Announcement announcement, Address leader)
+	{
+	    super(announcement.getDestination(), announcement.getLeader());
+	    this.leader = leader;
+	}
+
+	public Address getLeader() {
+	    return leader;
+	}
     }
 }
