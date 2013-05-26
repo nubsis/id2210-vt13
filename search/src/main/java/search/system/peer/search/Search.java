@@ -119,6 +119,7 @@ public final class Search extends ComponentDefinition {
 	    TManConfiguration.PARTITION_COUNT);
     private final Object sync = new Object();
     private final Random r = new Random(System.currentTimeMillis());
+    private final Set<String> knownEntries = new HashSet<>();
     /**
      * The requests awaiting confirmation from the leader key - source|uuid
      */
@@ -564,7 +565,6 @@ public final class Search extends ComponentDefinition {
 		}
 
 		String id = event.getId();
-
 		// Protection for if the leader goes down.
 		Insert.Request request = waiting.get(id);
 		if (request != null
@@ -576,6 +576,7 @@ public final class Search extends ComponentDefinition {
 		    // Remove this event from the queue so we don't
 		    // send another response.
 		    waiting.remove(id);
+		    knownEntries.add(event.getId());
 		}
 	    }
 	}
@@ -625,6 +626,11 @@ public final class Search extends ComponentDefinition {
 
 	    synchronized (sync) {
 
+		if(knownEntries.contains(event.getId()))
+		{
+		    return;
+		}
+
 		int selfPid = getPartitionFor(self);
 		int eventPid = getPartitionFor(event.getTitle());
 		int sourcePid = getPartitionFor(event.getSource());
@@ -655,10 +661,6 @@ public final class Search extends ComponentDefinition {
 			trigger(event, networkPort);
 		    }
 		    return;
-		}
-
-		if(existingIds.contains(event.getId())) {
-		    logger.log(event.getTitle() + " is old news!");
 		}
 
 		// If we're already handling this message, ignore it.
