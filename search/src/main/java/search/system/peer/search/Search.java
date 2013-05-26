@@ -9,6 +9,7 @@ import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
 import java.util.logging.Level;
@@ -111,12 +112,13 @@ public final class Search extends ComponentDefinition {
     // /////////
     private Address self;
     private Address leader;
-    private Collection<Address> allNeighbours = new LinkedList<>();
+    private final ArrayList<Address> allNeighbours = new ArrayList<>();
     private Collection<Address> gradientAbove = new LinkedList<>();
     private Collection<Address> gradientBelow = new LinkedList<>();
     private Map<Integer, Address> routes = new HashMap<>(
 	    TManConfiguration.PARTITION_COUNT);
     private final Object sync = new Object();
+    private final Random r = new Random(System.currentTimeMillis());
     /**
      * The requests awaiting confirmation from the leader key - source|uuid
      */
@@ -429,7 +431,7 @@ public final class Search extends ComponentDefinition {
 
 	    synchronized (sync) {
 
-		Insert.Request rq = null;
+		Insert.Request rq = new Insert.Request(self, null, event.getText());
 
 		int selfPid = getPartitionFor(self);
 		int eventPid = getPartitionFor(event.getText());
@@ -443,7 +445,7 @@ public final class Search extends ComponentDefinition {
 			logger.log("R :: Adding index entry: "
 				+ event.getText() + "; routing request to "
 				+ route + "[" + eventPid + "]");
-			rq = new Insert.Request(self, route, event.getText());
+			rq.setDestination(route);
 		    } else {
 			// What do we do when we have no one to route to?
 			// Send it to the leader and hope he can route?
@@ -451,26 +453,25 @@ public final class Search extends ComponentDefinition {
 				+ event.getText()
 				+ "; routing request through leader " + leader
 				+ "[" + selfPid + "]");
-			rq = new Insert.Request(self, leader, event.getText());
+			rq.setDestination(getRandomNeighbour());
 		    }
 		} else {
 		    logger.log("L :: Adding index entry: " + event.getText()
 			    + "; sending request to leader " + leader);
-
-		    rq = new Insert.Request(self, leader, event.getText());
+		    rq.setDestination(leader);
 		}
 
-		if (rq != null) {
-		    requests.put(rq.getId(), rq);
+		requests.put(rq.getId(), rq);
+		if (rq.getDestination() != null) {
 		    if (leader != null) {
 			trigger(rq, networkPort);
 		    }
 		} else {
 		    logger.log("ERROR: something went wrong adding "
 			    + event.getText());
-		    throw new IllegalStateException(
-			    "ERROR: something went wrong adding "
-				    + event.getText());
+		    //throw new IllegalStateException(
+		    //	    "ERROR: something went wrong adding "
+		    //		    + event.getText());
 		}
 	    }
 	}
@@ -482,7 +483,8 @@ public final class Search extends ComponentDefinition {
 	    // everything.
 	    synchronized (sync) {
 		leader = event.getLeader();
-		allNeighbours = event.getAllNeighbours();
+		allNeighbours.clear();
+		allNeighbours.addAll(event.getAllNeighbours());
 		gradientAbove = event.getHigherNeighbours();
 		gradientBelow = event.getLowerNeighbours();
 		routes = event.getRoutes();
@@ -495,9 +497,8 @@ public final class Search extends ComponentDefinition {
 
 	    synchronized (sync) {
 		for (Address address : allNeighbours) {
-		    trigger(new Push.Offer(self, address, maxIndexEntry),
-			    networkPort);
-		    trigger(new Push.Request(self, address), networkPort);
+		    //trigger(new Push.Offer(self, address, maxIndexEntry), networkPort);
+		    trigger(new Push.Request(self, address, maxIndexEntry), networkPort);
 		}
 
 		if (leader != null) {
@@ -530,7 +531,9 @@ public final class Search extends ComponentDefinition {
 	@Override
 	public void handle(Push.Request event) {
 	    synchronized (sync) {
-		trigger(new Push.Offer(event, maxIndexEntry), networkPort);
+		if(event.getVersion() < maxIndexEntry) {
+		    trigger(new Push.Offer(event, maxIndexEntry), networkPort);
+		}
 	    }
 	}
     };
@@ -606,6 +609,16 @@ public final class Search extends ComponentDefinition {
 	return peer.getId() % TManConfiguration.PARTITION_COUNT;
     }
 
+    private Address getRandomNeighbour()
+    {
+	if(!allNeighbours.isEmpty()) {
+	    return allNeighbours.get(r.nextInt(allNeighbours.size()));
+	} else {
+	    return leader;
+	}
+
+    }
+
     Handler<Insert.Request> handlerInsertRequest = new Handler<Insert.Request>() {
 	@Override
 	public void handle(Insert.Request event) {
@@ -621,15 +634,15 @@ public final class Search extends ComponentDefinition {
 		if (selfPid != eventPid) {
 
 		    Address route = routes.get(eventPid);
+		    // If we can route the message, let's do so.
 		    if (route != null) {
 			event.setDestination(route);
 		    } else {
-			if (leader == null) {
-			    return;
+			// Otherwise, try to route the message again through another neighbour
+			if(event.hop()) {
+			    event.setDestination(getRandomNeighbour());
 			}
-			event.setDestination(leader);
 		    }
-
 		    trigger(event, networkPort);
 		    return;
 		}
@@ -662,13 +675,13 @@ public final class Search extends ComponentDefinition {
 			    + " | assigned " + event.getEntryId());
 		    waiting.put(event.getId(), event);
 		    // Push the change downwards in the gradient.
-
+		    for (Address address : gradientBelow) {
+			trigger(new Push.Offer(self, address, event.getEntryId(),
+				event.getId()), networkPort);
+		    }
 		}
 
-		for (Address address : gradientBelow) {
-		    trigger(new Push.Offer(self, address, event.getEntryId(),
-			    event.getId()), networkPort);
-		}
+
 	    }
 	}
     };
@@ -682,7 +695,6 @@ public final class Search extends ComponentDefinition {
 		}
 		if (event.isSuccess()) {
 		    requests.remove(event.getRequestId());
-		    //addEntry(request.getTitle(), event.getEntryId());
 		    logger.log("Finished adding an entry: "
 			    + event.getEntryId() + " " + request.getTitle());
 		} else {

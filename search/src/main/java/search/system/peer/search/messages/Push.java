@@ -88,8 +88,14 @@ public class Push {
 
     public static class Request extends Message
     {
-	public Request(Address source, Address destination) {
+	private final int version;
+	public Request(Address source, Address destination, int version) {
 	    super(source, destination);
+	    this.version = version;
+	}
+
+	public int getVersion() {
+	    return version;
 	}
     }
 }

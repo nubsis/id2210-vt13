@@ -8,14 +8,18 @@ import se.sics.kompics.network.Message;
 public class Insert {
     public static class Request extends Message
     {
+	private static final int MAX_TTL = 5;
+
 	private int entryId = 0;
 	private final String title;
 	private final UUID id;
+	private int ttl;
 	public Request(Address source, Address destination, String title)
 	{
 	    super(source, destination);
 	    id = UUID.randomUUID();
 	    this.title = title;
+	    ttl = MAX_TTL;
 	}
 
 	public String getTitle() {
@@ -34,6 +38,10 @@ public class Insert {
 	    this.entryId = entryId;
 	}
 
+	public boolean hop()
+	{
+	    return ttl-- > 0;
+	}
 
     }
 

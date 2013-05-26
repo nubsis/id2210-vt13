@@ -127,7 +127,6 @@ public class ElectionProtocol {
 		    return;
 		}
 
-		// TODO: Safety check, there could be conflicting elections
 		// If a known node has an ID higher than the announcer
 		// we should refute the announcement and give the announcer
 		// a reference to the leader as we see it.
@@ -195,7 +194,7 @@ public class ElectionProtocol {
 	@Override
 	public void handle(LeaderAddress.Response e) {
 	    synchronized (sync) {
-		if (leader == null) {
+		if (leader == null || e.getLeader().getId() > leader.getId()) {
 		    tman.getLogger().log(
 			    "[NEW_LEADER][RECEIVED] " + e.getLeader()
 			    + " from " + e.getSource());
@@ -236,7 +235,14 @@ public class ElectionProtocol {
 	    if (leader != null) {
 		pingReceived = false;
 		tman.send(new Ping.Request(tman.getSelf(), leader));
+	    } else {
+
+		Address t = tman.getGradient().getHighest();
+		if(t!=null) {
+		    tman.send(new LeaderAddress.Request(tman.getSelf(), t));
+		}
 	    }
+
 	}
     }
 
@@ -256,7 +262,9 @@ public class ElectionProtocol {
 	    else if (!checkLeadership()) {
 		// no, we cannot be the leader... let's ask somebody
 		// actually, let's ask everybody
+		tman.getLogger().log("[LEADERSHIP][REQUEST] " + tman.getSelf());
 		for (Address a : tman.getGradient().getAll()) {
+
 		    tman.send(new LeaderAddress.Request(tman.getSelf(), a));
 		}
 	    }
